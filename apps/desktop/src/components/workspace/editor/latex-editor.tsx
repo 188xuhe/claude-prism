@@ -27,7 +27,7 @@ import {
 } from "@codemirror/search";
 import { unifiedMergeView, getChunks, acceptChunk, rejectChunk } from "@codemirror/merge";
 import { latex, latexLinter } from "codemirror-lang-latex";
-import { linter, lintGutter, type Diagnostic } from "@codemirror/lint";
+import { linter, lintGutter, forEachDiagnostic, type Diagnostic } from "@codemirror/lint";
 import { useDocumentStore } from "@/stores/document-store";
 import { useProposedChangesStore, type ProposedChange } from "@/stores/proposed-changes-store";
 import { useClaudeChatStore } from "@/stores/claude-chat-store";
@@ -39,6 +39,7 @@ import { ClaudeChatDrawer } from "@/components/claude-chat/claude-chat-drawer";
 import { ProposedChangesPanel } from "@/components/claude-chat/proposed-changes-panel";
 import { ImagePreview } from "./image-preview";
 import { SearchPanel } from "./search-panel";
+import { ProblemsPanel, type DiagnosticItem } from "./problems-panel";
 
 function getActiveFileContent(): string {
   const state = useDocumentStore.getState();
@@ -74,6 +75,7 @@ export function LatexEditor() {
   const [matchCount, setMatchCount] = useState(0);
   const [currentMatch, setCurrentMatch] = useState(0);
   const [mergeChunkInfo, setMergeChunkInfo] = useState({ total: 0, current: 0 });
+  const [diagnostics, setDiagnostics] = useState<DiagnosticItem[]>([]);
   const [selectionCoords, setSelectionCoords] = useState<{ top: number; left: number } | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
 
@@ -87,6 +89,7 @@ export function LatexEditor() {
   const pendingChangeRef = useRef<ProposedChange | null>(null);
   const handleKeepAllRef = useRef<() => void>(() => {});
   const handleUndoAllRef = useRef<() => void>(() => {});
+  const diagnosticsRef = useRef<DiagnosticItem[]>([]);
 
   useEffect(() => { isSearchOpenRef.current = isSearchOpen; }, [isSearchOpen]);
 
@@ -298,6 +301,29 @@ export function LatexEditor() {
           setSelectionCoords(null);
         }
       }
+
+      // Sync diagnostics for Problems panel
+      const diags: DiagnosticItem[] = [];
+      forEachDiagnostic(update.state, (d, from) => {
+        diags.push({
+          from,
+          to: d.to,
+          severity: d.severity,
+          message: d.message,
+          line: update.state.doc.lineAt(from).number,
+        });
+      });
+      if (
+        diags.length !== diagnosticsRef.current.length ||
+        diags.some(
+          (d, i) =>
+            d.from !== diagnosticsRef.current[i]?.from ||
+            d.message !== diagnosticsRef.current[i]?.message
+        )
+      ) {
+        diagnosticsRef.current = diags;
+        setDiagnostics(diags);
+      }
     });
 
     const compileKeymap = Prec.highest(
@@ -399,22 +425,24 @@ export function LatexEditor() {
           ".cm-changedLineGutter": { backgroundColor: "#22c55e" },
           ".cm-deletedLineGutter": { backgroundColor: "#ef4444" },
           ".cm-diagnostic": {
-            padding: "6px 10px",
+            padding: "8px 10px",
           },
           ".cm-diagnosticAction": {
             display: "inline-block",
-            padding: "3px 10px",
-            borderRadius: "4px",
+            padding: "4px 12px",
+            borderRadius: "6px",
             fontSize: "12px",
-            fontWeight: "600",
+            fontWeight: "500",
             cursor: "pointer",
-            backgroundColor: "rgb(139, 92, 246)",
-            color: "#fff",
-            border: "none",
-            marginTop: "6px",
+            backgroundColor: "var(--muted, rgba(255,255,255,0.08))",
+            color: "var(--foreground, #e5e5e5)",
+            border: "1px solid var(--border, rgba(255,255,255,0.1))",
+            marginTop: "8px",
+            transition: "background-color 0.15s, border-color 0.15s",
           },
           ".cm-diagnosticAction:hover": {
-            backgroundColor: "rgb(124, 58, 237)",
+            backgroundColor: "var(--accent, rgba(255,255,255,0.15))",
+            borderColor: "var(--foreground, rgba(255,255,255,0.3))",
           },
         }),
       ],
@@ -636,6 +664,26 @@ export function LatexEditor() {
           </div>
         )}
       </div>
+      {diagnostics.length > 0 && (
+        <ProblemsPanel
+          diagnostics={diagnostics}
+          fileName={activeFile?.relativePath ?? "document.tex"}
+          onNavigate={(from) => {
+            const view = viewRef.current;
+            if (!view) return;
+            view.dispatch({
+              selection: { anchor: from },
+              effects: EditorView.scrollIntoView(from, { y: "center" }),
+            });
+            view.focus();
+          }}
+          onFixWithChat={(message, line) => {
+            const fileName = activeFile?.relativePath ?? "document.tex";
+            const ctx = `[Lint error in ${fileName}:${line}]\n[Error: ${message}]`;
+            useClaudeChatStore.getState().sendPrompt(`${ctx}\n\nFix this lint error.`);
+          }}
+        />
+      )}
       {activeFileChange && (
         <ProposedChangesPanel
           change={activeFileChange}
