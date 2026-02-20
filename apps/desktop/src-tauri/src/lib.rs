@@ -1,3 +1,5 @@
+mod claude;
+
 use std::process::Command;
 use std::sync::Mutex;
 use tauri::Manager;
@@ -39,6 +41,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_process::init())
         .manage(Mutex::new(SidecarState { child: None }))
+        .manage(claude::ClaudeProcessState::default())
         .setup(|app| {
             // In dev mode, the sidecar is started separately (via pnpm dev:desktop)
             // In production, start the sidecar from the bundled resources
@@ -71,7 +74,13 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_sidecar_url])
+        .invoke_handler(tauri::generate_handler![
+            get_sidecar_url,
+            claude::execute_claude_code,
+            claude::continue_claude_code,
+            claude::resume_claude_code,
+            claude::cancel_claude_execution,
+        ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
