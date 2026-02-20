@@ -1,3 +1,4 @@
+import { Hono } from "hono";
 import { claudeCode } from "ai-sdk-provider-claude-code";
 import { frontendTools } from "@assistant-ui/react-ai-sdk";
 import {
@@ -6,10 +7,6 @@ import {
   stepCountIs,
   type ToolSet,
 } from "ai";
-import { NextResponse } from "next/server";
-import { chatRatelimit, getIP } from "@/lib/ratelimit";
-
-export const maxDuration = 60;
 
 const SYSTEM_PROMPT = `You are a helpful LaTeX assistant. You help users write and edit LaTeX documents.
 
@@ -44,34 +41,22 @@ Common tasks you help with:
 - Package recommendations
 - Debugging LaTeX errors`;
 
-export async function POST(req: Request) {
-  if (chatRatelimit) {
-    const ip = getIP(req);
-    const { success, limit, remaining, reset } = await chatRatelimit.limit(ip);
+export const chatRoutes = new Hono();
 
-    if (!success) {
-      return NextResponse.json(
-        { error: "Too many requests" },
-        {
-          status: 429,
-          headers: {
-            "X-RateLimit-Limit": limit.toString(),
-            "X-RateLimit-Remaining": remaining.toString(),
-            "X-RateLimit-Reset": reset.toString(),
-          },
-        },
-      );
-    }
-  }
-
-  const { messages, system, tools } = await req.json();
+chatRoutes.post("/api/chat", async (c) => {
+  const { messages, system, tools, projectDir } = await c.req.json();
 
   const fullSystemPrompt = system
     ? `${SYSTEM_PROMPT}\n\n${system}`
     : SYSTEM_PROMPT;
 
+  const modelOptions: Record<string, unknown> = {};
+  if (projectDir) {
+    modelOptions.cwd = projectDir;
+  }
+
   const result = streamText({
-    model: claudeCode("sonnet"),
+    model: claudeCode("sonnet", modelOptions),
     system: fullSystemPrompt,
     messages: await convertToModelMessages(messages),
     stopWhen: stepCountIs(10),
@@ -79,4 +64,4 @@ export async function POST(req: Request) {
   });
 
   return result.toUIMessageStreamResponse();
-}
+});
