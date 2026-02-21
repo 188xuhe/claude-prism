@@ -224,7 +224,7 @@ export function LatexEditor() {
 
   // Compile: save all files first, then compile via sidecar using projectDir
   compileRef.current = async () => {
-    if (isCompiling || !projectRoot) return;
+    if (isCompiling || !projectRoot || activeFile?.type !== "tex") return;
     setIsCompiling(true);
     try {
       await saveAllFiles();

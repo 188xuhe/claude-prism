@@ -353,10 +353,10 @@ export const useDocumentStore = create<DocumentState>()((set, get) => ({
     if (!state.projectRoot) return;
 
     const relativePath = folder ? `${folder}/${name}` : name;
-    const content =
-      type === "tex"
-        ? `\\documentclass{article}\n\n\\begin{document}\n\n% Your content here\n\n\\end{document}\n`
-        : "";
+    const isTexFile = name.endsWith(".tex") || name.endsWith(".ltx");
+    const content = isTexFile
+      ? `\\documentclass{article}\n\n\\begin{document}\n\n% Your content here\n\n\\end{document}\n`
+      : "";
 
     const fullPath = await createFileOnDisk(state.projectRoot, relativePath, content);
 
@@ -369,7 +369,7 @@ export const useDocumentStore = create<DocumentState>()((set, get) => ({
           relativePath,
           absolutePath: fullPath,
           type,
-          content: type === "tex" ? content : undefined,
+          content: type !== "image" ? content : undefined,
           isDirty: false,
         },
       ],

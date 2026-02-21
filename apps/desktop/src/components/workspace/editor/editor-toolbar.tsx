@@ -14,6 +14,7 @@ import {
   ImageIcon,
   MinusIcon,
   PlusIcon,
+  BookMarkedIcon,
 } from "lucide-react";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { Button } from "@/components/ui/button";
@@ -187,6 +188,13 @@ export function EditorToolbar({
         onClick={() => insertText("\\[\n  ", "\n\\]")}
       >
         <span className="font-mono text-xs">∫</span>
+      </TooltipIconButton>
+      <div className="mx-2 h-4 w-px bg-border" />
+      <TooltipIconButton
+        tooltip="Citation (\\cite)"
+        onClick={() => insertText("\\cite{", "}")}
+      >
+        <BookMarkedIcon className="size-4" />
       </TooltipIconButton>
     </div>
   );

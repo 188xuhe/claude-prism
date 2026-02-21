@@ -1,4 +1,5 @@
 mod claude;
+mod zotero;
 
 use std::process::Command;
 use std::sync::Mutex;
@@ -35,6 +36,9 @@ fn get_sidecar_url() -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Load .env file (walks up from cwd to find it)
+    let _ = dotenvy::dotenv();
+
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -42,6 +46,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .manage(Mutex::new(SidecarState { child: None }))
         .manage(claude::ClaudeProcessState::default())
+        .manage(zotero::ZoteroOAuthState::default())
         .setup(|app| {
             // In dev mode, the sidecar is started separately (via pnpm dev:desktop)
             // In production, start the sidecar from the bundled resources
@@ -81,6 +86,9 @@ pub fn run() {
             claude::resume_claude_code,
             claude::cancel_claude_execution,
             claude::run_shell_command,
+            zotero::zotero_start_oauth,
+            zotero::zotero_complete_oauth,
+            zotero::zotero_cancel_oauth,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

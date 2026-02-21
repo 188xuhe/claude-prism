@@ -20,9 +20,11 @@ import {
   FileCodeIcon,
   FileIcon,
 } from "lucide-react";
+import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { useTheme } from "next-themes";
 import { useDocumentStore, type ProjectFile } from "@/stores/document-store";
 import { cn } from "@/lib/utils";
+import { ZoteroPanel, ZoteroHeader } from "@/components/workspace/zotero-panel";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -176,6 +178,7 @@ export function Sidebar() {
     return active?.content ?? "";
   });
   const requestJumpToPosition = useDocumentStore((s) => s.requestJumpToPosition);
+  const insertAtCursor = useDocumentStore((s) => s.insertAtCursor);
   const closeProject = useDocumentStore((s) => s.closeProject);
   const projectRoot = useDocumentStore((s) => s.projectRoot);
   const folders = useDocumentStore((s) => s.folders);
@@ -367,100 +370,125 @@ export function Sidebar() {
         </Button>
       </div>
 
-      {/* Files header */}
-      <div className="flex h-9 items-center justify-between border-sidebar-border border-b px-3">
-        <div className="flex items-center gap-2">
-          <FolderIcon className="size-4 text-muted-foreground" />
-          <span className="font-medium text-xs">Files</span>
-        </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="size-6" title="Add">
-              <PlusIcon className="size-3.5" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => openNewFileDialog()}>
-              <FileTextIcon className="mr-2 size-4" />
-              New LaTeX File
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => openNewFolderDialog()}>
-              <FolderPlusIcon className="mr-2 size-4" />
-              New Folder
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => handleImport()}>
-              <UploadIcon className="mr-2 size-4" />
-              Import File
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-
-      {/* File tree */}
-      <ContextMenu>
-        <ContextMenuTrigger asChild>
-          <div className="min-h-0 flex-1 overflow-y-auto p-2">
-            {tree.map((node) => (
-              <FileTreeNode
-                key={node.relativePath}
-                node={node}
-                depth={0}
-                activeFileId={activeFileId}
-                expandedFolders={expandedFolders}
-                onToggleFolder={toggleFolder}
-                onSelectFile={setActiveFile}
-                onNewFile={openNewFileDialog}
-                onNewFolder={openNewFolderDialog}
-                onImport={handleImport}
-                onRename={openRenameDialog}
-                onDelete={deleteFile}
-                fileCount={files.length}
-              />
-            ))}
+      {/* Resizable sections */}
+      <PanelGroup direction="vertical" className="min-h-0 flex-1">
+        {/* Files */}
+        <Panel defaultSize={50} minSize={15}>
+          <div className="flex h-full flex-col">
+            <div className="flex h-8 shrink-0 items-center justify-between border-sidebar-border border-b px-3">
+              <div className="flex items-center gap-2">
+                <FolderIcon className="size-3.5 text-muted-foreground" />
+                <span className="font-medium text-xs">Files</span>
+              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="size-5" title="Add">
+                    <PlusIcon className="size-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => openNewFileDialog()}>
+                    <FileTextIcon className="mr-2 size-4" />
+                    New LaTeX File
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => openNewFolderDialog()}>
+                    <FolderPlusIcon className="mr-2 size-4" />
+                    New Folder
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => handleImport()}>
+                    <UploadIcon className="mr-2 size-4" />
+                    Import File
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+            <ContextMenu>
+              <ContextMenuTrigger asChild>
+                <div className="min-h-0 flex-1 overflow-y-auto p-1">
+                  {tree.map((node) => (
+                    <FileTreeNode
+                      key={node.relativePath}
+                      node={node}
+                      depth={0}
+                      activeFileId={activeFileId}
+                      expandedFolders={expandedFolders}
+                      onToggleFolder={toggleFolder}
+                      onSelectFile={setActiveFile}
+                      onNewFile={openNewFileDialog}
+                      onNewFolder={openNewFolderDialog}
+                      onImport={handleImport}
+                      onRename={openRenameDialog}
+                      onDelete={deleteFile}
+                      fileCount={files.length}
+                    />
+                  ))}
+                </div>
+              </ContextMenuTrigger>
+              <ContextMenuContent>
+                <ContextMenuItem onClick={() => openNewFileDialog()}>
+                  <FileTextIcon className="mr-2 size-4" />
+                  New File
+                </ContextMenuItem>
+                <ContextMenuItem onClick={() => openNewFolderDialog()}>
+                  <FolderPlusIcon className="mr-2 size-4" />
+                  New Folder
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+                <ContextMenuItem onClick={() => handleImport()}>
+                  <UploadIcon className="mr-2 size-4" />
+                  Import File
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
           </div>
-        </ContextMenuTrigger>
-        <ContextMenuContent>
-          <ContextMenuItem onClick={() => openNewFileDialog()}>
-            <FileTextIcon className="mr-2 size-4" />
-            New File
-          </ContextMenuItem>
-          <ContextMenuItem onClick={() => openNewFolderDialog()}>
-            <FolderPlusIcon className="mr-2 size-4" />
-            New Folder
-          </ContextMenuItem>
-          <ContextMenuSeparator />
-          <ContextMenuItem onClick={() => handleImport()}>
-            <UploadIcon className="mr-2 size-4" />
-            Import File
-          </ContextMenuItem>
-        </ContextMenuContent>
-      </ContextMenu>
+        </Panel>
 
-      {/* Outline header */}
-      <div className="flex h-9 items-center gap-2 border-sidebar-border border-t px-3">
-        <ListIcon className="size-4 text-muted-foreground" />
-        <span className="font-medium text-xs">Outline</span>
-      </div>
-      <div className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
-        {toc.length > 0 ? (
-          toc.map((item, index) => (
-            <button
-              key={index}
-              className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-sm transition-colors hover:bg-sidebar-accent/50"
-              style={{ paddingLeft: `${(item.level - 1) * 12 + 8}px` }}
-              onClick={() => handleTocClick(item.line)}
-            >
-              <HashIcon className="size-3 shrink-0 text-muted-foreground" />
-              <span className="truncate">{item.title}</span>
-            </button>
-          ))
-        ) : (
-          <div className="px-2 py-1 text-muted-foreground text-xs">
-            No sections found
+        <PanelResizeHandle className="h-px bg-sidebar-border transition-colors hover:bg-ring data-resize-handle-active:bg-ring" />
+
+        {/* Outline */}
+        <Panel defaultSize={30} minSize={10}>
+          <div className="flex h-full flex-col">
+            <div className="flex h-8 shrink-0 items-center gap-2 px-3">
+              <ListIcon className="size-3.5 text-muted-foreground" />
+              <span className="font-medium text-xs">Outline</span>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-1">
+              {toc.length > 0 ? (
+                toc.map((item, index) => (
+                  <button
+                    key={index}
+                    className="flex w-full items-center gap-1.5 rounded-md px-2 py-0.5 text-left text-xs transition-colors hover:bg-sidebar-accent/50"
+                    style={{ paddingLeft: `${(item.level - 1) * 12 + 8}px` }}
+                    onClick={() => handleTocClick(item.line)}
+                  >
+                    <HashIcon className="size-3 shrink-0 text-muted-foreground" />
+                    <span className="truncate">{item.title}</span>
+                  </button>
+                ))
+              ) : (
+                <div className="px-2 py-1 text-muted-foreground text-[11px]">
+                  No sections found
+                </div>
+              )}
+            </div>
           </div>
-        )}
-      </div>
+        </Panel>
+
+        <PanelResizeHandle className="h-px bg-sidebar-border transition-colors hover:bg-ring data-resize-handle-active:bg-ring" />
+
+        {/* Zotero */}
+        <Panel defaultSize={20} minSize={10}>
+          <div className="flex h-full flex-col">
+            <div className="flex h-8 shrink-0 items-center">
+              <ZoteroHeader />
+            </div>
+            <div className="min-h-0 flex-1 overflow-hidden">
+              <ZoteroPanel />
+            </div>
+          </div>
+        </Panel>
+      </PanelGroup>
 
       {/* Footer */}
       <div className="flex items-center justify-between border-sidebar-border border-t px-3 py-2 text-muted-foreground text-xs">

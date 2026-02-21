@@ -52,6 +52,11 @@ export function PdfPreview() {
   const files = useDocumentStore((s) => s.files);
   const saveAllFiles = useDocumentStore((s) => s.saveAllFiles);
   const setActiveFile = useDocumentStore((s) => s.setActiveFile);
+  const activeFileType = useDocumentStore((s) => {
+    const active = s.files.find((f) => f.id === s.activeFileId);
+    return active?.type ?? "tex";
+  });
+  const isTexActive = activeFileType === "tex";
   const requestJumpToPosition = useDocumentStore(
     (s) => s.requestJumpToPosition,
   );
@@ -316,7 +321,7 @@ export function PdfPreview() {
   const handleScaleChange = (newScale: number) => setScale(newScale);
 
   const handleCompile = async () => {
-    if (isCompiling || !projectRoot) return;
+    if (isCompiling || !projectRoot || !isTexActive) return;
     setIsCompiling(true);
     setPdfError(null);
     try {
@@ -442,7 +447,7 @@ export function PdfPreview() {
           {!isSaving && !isCompiling && pdfData && (
             <>
               <span className="text-muted-foreground text-xs">Ready</span>
-              <Button variant="ghost" size="icon" className="size-6" onClick={handleCompile}>
+              <Button variant="ghost" size="icon" className="size-6" onClick={handleCompile} disabled={!isTexActive}>
                 <RefreshCwIcon className="size-3.5" />
               </Button>
             </>
@@ -450,7 +455,7 @@ export function PdfPreview() {
           {!isSaving && !isCompiling && compileError && (
             <>
               <span className="text-destructive text-xs">Error</span>
-              <Button variant="ghost" size="icon" className="size-6" onClick={handleCompile}>
+              <Button variant="ghost" size="icon" className="size-6" onClick={handleCompile} disabled={!isTexActive}>
                 <RefreshCwIcon className="size-3.5" />
               </Button>
             </>
