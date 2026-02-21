@@ -36,6 +36,7 @@ import {
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { useTheme } from "next-themes";
 import { useDocumentStore, type ProjectFile } from "@/stores/document-store";
+import { useHistoryStore } from "@/stores/history-store";
 import { cn } from "@/lib/utils";
 import { ZoteroPanel, ZoteroHeader } from "@/components/workspace/zotero-panel";
 import { Button } from "@/components/ui/button";
@@ -960,6 +961,7 @@ function FileTreeNode({
             )}
             style={{ paddingLeft: `${depth * 16 + 8}px` }}
             onClick={() => onSelectFile(file.id)}
+            onDoubleClick={() => useHistoryStore.getState().stopReview()}
           >
             {getFileIcon(file)}
             <span className="truncate">

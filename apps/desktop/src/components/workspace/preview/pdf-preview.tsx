@@ -12,6 +12,7 @@ import {
   MousePointerClickIcon,
 } from "lucide-react";
 import { useDocumentStore } from "@/stores/document-store";
+import { useHistoryStore } from "@/stores/history-store";
 import { useClaudeChatStore } from "@/stores/claude-chat-store";
 import { Button } from "@/components/ui/button";
 import {
@@ -325,6 +326,7 @@ export function PdfPreview() {
 
   const handleCompile = async () => {
     if (isCompiling || !projectRoot || !isTexActive) return;
+    useHistoryStore.getState().stopReview();
     setIsCompiling(true);
     setPdfError(null);
     try {

@@ -210,17 +210,37 @@ export function PdfViewer({
     return () => container.removeEventListener("dblclick", handleDblClick);
   }, []); // stable — uses refs for changing values
 
-  // Text selection detection via mouseup
+  // Text selection detection via mouseup (with delay to avoid interrupting long drags)
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
+
+    let selectionTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const cancelPendingSelection = () => {
+      if (selectionTimer !== null) {
+        clearTimeout(selectionTimer);
+        selectionTimer = null;
+      }
+    };
+
+    const handleMouseDown = () => {
+      // Cancel any pending selection toolbar when user starts a new drag
+      cancelPendingSelection();
+    };
 
     const handleMouseUp = () => {
       const cb = textSelectRef.current;
       if (!cb) return;
 
-      // Small delay to let the browser finalize the selection
-      requestAnimationFrame(() => {
+      // Cancel any previously pending selection
+      cancelPendingSelection();
+
+      // Delay showing the toolbar so that extending/adjusting selections
+      // (quick mousedown after mouseup) doesn't flash the toolbar
+      selectionTimer = setTimeout(() => {
+        selectionTimer = null;
+
         const sel = window.getSelection();
         const text = sel?.toString().trim();
         if (!text || text.length < 2) {
@@ -262,12 +282,31 @@ export function PdfViewer({
           pdfX,
           pdfY,
         });
-      });
+      }, 300);
     };
 
+    container.addEventListener("mousedown", handleMouseDown);
     container.addEventListener("mouseup", handleMouseUp);
-    return () => container.removeEventListener("mouseup", handleMouseUp);
+    return () => {
+      cancelPendingSelection();
+      container.removeEventListener("mousedown", handleMouseDown);
+      container.removeEventListener("mouseup", handleMouseUp);
+    };
   }, []); // stable — uses refs for changing values
+
+  // Dismiss selection toolbar on scroll
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      const cb = textSelectRef.current;
+      if (cb) cb(null);
+    };
+
+    container.addEventListener("scroll", handleScroll, { passive: true });
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, []);
 
   useEffect(() => {
     const container = containerRef.current;
