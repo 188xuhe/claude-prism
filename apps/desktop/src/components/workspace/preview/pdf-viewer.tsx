@@ -136,16 +136,11 @@ export function PdfViewer({
   );
 
   const handlePageLoadSuccess = useCallback(
-    ({ width }: { width: number }) => {
-      if (hasSetInitialScale.current) return;
-      if (containerRef.current && onScaleChange) {
-        hasSetInitialScale.current = true;
-        const containerWidth = containerRef.current.clientWidth - 32;
-        const fitScale = containerWidth / width;
-        onScaleChange(Math.min(fitScale, 2));
-      }
+    ({ width: _width }: { width: number }) => {
+      // Scale is now managed externally — default 100% (1.0)
+      hasSetInitialScale.current = true;
     },
-    [onScaleChange],
+    [],
   );
 
   const handleLoadError = useCallback(
@@ -341,7 +336,7 @@ export function PdfViewer({
   }, []);
 
   return (
-    <div ref={containerRef} className="flex-1 overflow-auto">
+    <div ref={containerRef} className="min-h-0 flex-1 overflow-auto">
       <div
         ref={contentRef}
         className="flex flex-col items-center gap-4 p-4"

@@ -28,7 +28,7 @@ import {
 import { unifiedMergeView, getChunks, acceptChunk, rejectChunk } from "@codemirror/merge";
 import { latex, latexLinter } from "codemirror-lang-latex";
 import { linter, lintGutter, forEachDiagnostic, type Diagnostic } from "@codemirror/lint";
-import { useDocumentStore } from "@/stores/document-store";
+import { useDocumentStore, type ProjectFile } from "@/stores/document-store";
 import { useProposedChangesStore, type ProposedChange } from "@/stores/proposed-changes-store";
 import { useClaudeChatStore } from "@/stores/claude-chat-store";
 import { useHistoryStore } from "@/stores/history-store";
@@ -41,6 +41,8 @@ import { ProposedChangesPanel } from "@/components/claude-chat/proposed-changes-
 import { ImagePreview } from "./image-preview";
 import { SearchPanel } from "./search-panel";
 import { ProblemsPanel, type DiagnosticItem } from "./problems-panel";
+import { PdfViewer } from "@/components/workspace/preview/pdf-viewer";
+import { readFile } from "@tauri-apps/plugin-fs";
 
 function getActiveFileContent(): string {
   const state = useDocumentStore.getState();
@@ -70,7 +72,7 @@ export function LatexEditor() {
   const isTextFile = activeFile?.type === "tex" || activeFile?.type === "bib" || activeFile?.type === "style" || activeFile?.type === "other";
   const activeFileContent = activeFile?.content;
 
-  const [imageScale, setImageScale] = useState(0.5);
+  const [imageScale, setImageScale] = useState(1.0);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [matchCount, setMatchCount] = useState(0);
@@ -598,25 +600,7 @@ export function LatexEditor() {
   }, []);
 
   if (activeFile?.type === "pdf") {
-    return (
-      <div className="flex h-full flex-col bg-background">
-        <EditorToolbar editorView={viewRef} fileType="image" imageScale={imageScale} onImageScaleChange={setImageScale} />
-        <div className="relative min-h-0 flex-1 overflow-hidden">
-          {activeFile.dataUrl ? (
-            <iframe
-              src={activeFile.dataUrl}
-              className="h-full w-full border-0"
-              title={activeFile.name}
-            />
-          ) : (
-            <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
-              Unable to load PDF
-            </div>
-          )}
-          <ClaudeChatDrawer />
-        </div>
-      </div>
-    );
+    return <InlinePdfViewer file={activeFile} editorView={viewRef} imageScale={imageScale} onImageScaleChange={setImageScale} />;
   }
 
   if (!isTextFile && activeFile) {
@@ -736,6 +720,64 @@ export function LatexEditor() {
           onUndo={() => handleUndoAllRef.current()}
         />
       )}
+    </div>
+  );
+}
+
+// ─── Inline PDF Viewer (for PDF files opened from file tree) ───
+
+function InlinePdfViewer({
+  file,
+  editorView,
+  imageScale,
+  onImageScaleChange,
+}: {
+  file: ProjectFile;
+  editorView: React.RefObject<EditorView | null>;
+  imageScale: number;
+  onImageScaleChange: (scale: number) => void;
+}) {
+  const [pdfData, setPdfData] = useState<Uint8Array | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setPdfData(null);
+    setError(null);
+
+    readFile(file.absolutePath)
+      .then((data) => {
+        if (!cancelled) setPdfData(new Uint8Array(data));
+      })
+      .catch((err) => {
+        if (!cancelled) setError(String(err));
+      });
+
+    return () => { cancelled = true; };
+  }, [file.absolutePath]);
+
+  return (
+    <div className="flex h-full flex-col bg-background">
+      <EditorToolbar editorView={editorView} fileType="image" imageScale={imageScale} onImageScaleChange={onImageScaleChange} />
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+        {pdfData ? (
+          <PdfViewer
+            data={pdfData}
+            scale={imageScale}
+            onScaleChange={onImageScaleChange}
+            onError={(msg) => setError(msg)}
+          />
+        ) : error ? (
+          <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
+            Failed to load PDF: {error}
+          </div>
+        ) : (
+          <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
+            Loading PDF...
+          </div>
+        )}
+        <ClaudeChatDrawer />
+      </div>
     </div>
   );
 }
