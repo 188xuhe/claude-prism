@@ -180,6 +180,10 @@ jobs:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         run: |
+          if [ -z "$APPLE_CERTIFICATE" ]; then
+            echo "No Apple certificate configured — skipping code signing setup"
+            exit 0
+          fi
           KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
           KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
 
@@ -228,6 +232,10 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
         run: |
+          if [ -z "$APPLE_ID" ]; then
+            echo "No Apple notarization credentials — skipping notarization"
+            exit 0
+          fi
           TARGET="aarch64-apple-darwin"
           BUNDLE="apps/desktop/src-tauri/target/$TARGET/release/bundle"
           DMG_PATH=$(find "$BUNDLE/dmg" -name '*.dmg' | head -1)
@@ -337,6 +345,10 @@ jobs:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         run: |
+          if [ -z "$APPLE_CERTIFICATE" ]; then
+            echo "No Apple certificate configured — skipping code signing setup"
+            exit 0
+          fi
           KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
           KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
 
@@ -385,6 +397,10 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
         run: |
+          if [ -z "$APPLE_ID" ]; then
+            echo "No Apple notarization credentials — skipping notarization"
+            exit 0
+          fi
           TARGET="x86_64-apple-darwin"
           BUNDLE="apps/desktop/src-tauri/target/$TARGET/release/bundle"
           DMG_PATH=$(find "$BUNDLE/dmg" -name '*.dmg' | head -1)
