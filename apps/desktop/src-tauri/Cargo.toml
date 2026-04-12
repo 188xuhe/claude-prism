@@ -33,6 +33,8 @@ chrono = "0.4"
 uuid = { version = "1", features = ["v4"] }
 which = "7"
 tectonic = { version = "0.15", default-features = true, features = ["external-harfbuzz"] }
+# Pin tectonic_bundles to 0.3.x — 0.4.1 (released 2026-04-11) broke API compat with tectonic 0.15
+tectonic_bundles = "=0.3.1"
 # NOTE: Building tectonic requires external harfbuzz/graphite2/icu/freetype:
 #   macOS:   brew install icu4c harfbuzz pkg-config
 #   Linux:   apt install libicu-dev libgraphite2-dev libharfbuzz-dev libfreetype-dev libfontconfig-dev
