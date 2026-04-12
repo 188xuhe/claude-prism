@@ -19,6 +19,9 @@ permissions:
 env:
   TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
   TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+  # When no Apple signing identity is configured, skip codesign so the build
+  # can still produce unsigned DMGs for development/testing.
+  APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
 
 jobs:
   # ──────────────────────────────────────────────
@@ -86,6 +89,16 @@ jobs:
           cache: pnpm
 
       - run: pnpm install
+
+      - name: Generate temp signing key (if not configured)
+        shell: bash
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "No TAURI_SIGNING_PRIVATE_KEY — generating temporary key"
+            pnpm --filter @claude-prism/desktop tauri signer generate -w .tauri-temp-key
+            echo "TAURI_SIGNING_PRIVATE_KEY=$(cat .tauri-temp-key)" >> $GITHUB_ENV
+            echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=" >> $GITHUB_ENV
+          fi
 
       - name: Build Tauri app
         shell: bash
@@ -220,12 +233,25 @@ jobs:
 
       - run: pnpm install
 
+      - name: Generate temp signing key (if not configured)
+        shell: bash
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "No TAURI_SIGNING_PRIVATE_KEY — generating temporary key"
+            pnpm --filter @claude-prism/desktop tauri signer generate -w .tauri-temp-key
+            echo "TAURI_SIGNING_PRIVATE_KEY=$(cat .tauri-temp-key)" >> $GITHUB_ENV
+            echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=" >> $GITHUB_ENV
+          fi
+
+      - name: Setup ad-hoc signing (if no Apple identity)
+        if: env.APPLE_SIGNING_IDENTITY == ''
+        run: echo "APPLE_SIGNING_IDENTITY=-" >> $GITHUB_ENV
+
       - name: Build Tauri app
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ZOTERO_CONSUMER_KEY: ${{ secrets.ZOTERO_CONSUMER_KEY }}
           ZOTERO_CONSUMER_SECRET: ${{ secrets.ZOTERO_CONSUMER_SECRET }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: pnpm --filter @claude-prism/desktop tauri build --target aarch64-apple-darwin
 
       - name: Notarize DMG
@@ -385,12 +411,25 @@ jobs:
 
       - run: pnpm install
 
+      - name: Generate temp signing key (if not configured)
+        shell: bash
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "No TAURI_SIGNING_PRIVATE_KEY — generating temporary key"
+            pnpm --filter @claude-prism/desktop tauri signer generate -w .tauri-temp-key
+            echo "TAURI_SIGNING_PRIVATE_KEY=$(cat .tauri-temp-key)" >> $GITHUB_ENV
+            echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=" >> $GITHUB_ENV
+          fi
+
+      - name: Setup ad-hoc signing (if no Apple identity)
+        if: env.APPLE_SIGNING_IDENTITY == ''
+        run: echo "APPLE_SIGNING_IDENTITY=-" >> $GITHUB_ENV
+
       - name: Build Tauri app
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ZOTERO_CONSUMER_KEY: ${{ secrets.ZOTERO_CONSUMER_KEY }}
           ZOTERO_CONSUMER_SECRET: ${{ secrets.ZOTERO_CONSUMER_SECRET }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: pnpm --filter @claude-prism/desktop tauri build --target x86_64-apple-darwin
 
       - name: Notarize DMG
@@ -517,6 +556,16 @@ jobs:
           cache: pnpm
 
       - run: pnpm install
+
+      - name: Generate temp signing key (if not configured)
+        shell: bash
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "No TAURI_SIGNING_PRIVATE_KEY — generating temporary key"
+            pnpm --filter @claude-prism/desktop tauri signer generate -w .tauri-temp-key
+            echo "TAURI_SIGNING_PRIVATE_KEY=$(cat .tauri-temp-key)" >> $GITHUB_ENV
+            echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=" >> $GITHUB_ENV
+          fi
 
       - name: Build Tauri app
         env:
