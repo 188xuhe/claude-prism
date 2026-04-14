@@ -174,8 +174,8 @@ interface ClaudeChatState {
   }[];
 
   /** Currently selected model (passed per-prompt to Claude CLI) */
-  selectedModel: "sonnet" | "opus" | "haiku" | "opusplan";
-  setSelectedModel: (model: "sonnet" | "opus" | "haiku" | "opusplan") => void;
+  selectedModel: string;
+  setSelectedModel: (model: string) => void;
 
   /** Effort level for Opus 4.6 adaptive reasoning */
   effortLevel: "low" | "medium" | "high";
