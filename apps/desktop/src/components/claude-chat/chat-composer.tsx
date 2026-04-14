@@ -24,6 +24,7 @@ import {
   SparklesIcon,
   RabbitIcon,
   LayersIcon,
+  SettingsIcon,
 } from "lucide-react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { writeFile, mkdir, exists } from "@tauri-apps/plugin-fs";
@@ -86,6 +87,14 @@ export const ChatComposer: FC<{ isOpen?: boolean }> = ({ isOpen }) => {
     left: 0,
     bottom: 0,
   });
+  const customModelInputRef = useRef<HTMLInputElement>(null);
+
+  const BUILT_IN_MODELS = ["sonnet", "opus", "haiku", "opusplan"] as const;
+  const isCustomModel = !BUILT_IN_MODELS.includes(selectedModel as any);
+  const [customModelInput, setCustomModelInput] = useState(
+    isCustomModel ? selectedModel : "",
+  );
+  const [showCustomInput, setShowCustomInput] = useState(isCustomModel);
 
   // Recalculate popup position when it opens
   useLayoutEffect(() => {
@@ -695,25 +704,25 @@ export const ChatComposer: FC<{ isOpen?: boolean }> = ({ isOpen }) => {
               </div>
               {[
                 {
-                  id: "sonnet" as const,
+                  id: "sonnet",
                   name: "Sonnet",
                   desc: "Fast, efficient for most tasks",
                   icon: <ZapIcon className="size-3.5" />,
                 },
                 {
-                  id: "opus" as const,
+                  id: "opus",
                   name: "Opus",
                   desc: "Most capable, complex reasoning",
                   icon: <SparklesIcon className="size-3.5" />,
                 },
                 {
-                  id: "haiku" as const,
+                  id: "haiku",
                   name: "Haiku",
                   desc: "Fastest, simple tasks",
                   icon: <RabbitIcon className="size-3.5" />,
                 },
                 {
-                  id: "opusplan" as const,
+                  id: "opusplan",
                   name: "OpusPlan",
                   desc: "Opus for planning, Sonnet for execution",
                   icon: <LayersIcon className="size-3.5" />,
@@ -727,7 +736,10 @@ export const ChatComposer: FC<{ isOpen?: boolean }> = ({ isOpen }) => {
                       ? "bg-accent text-accent-foreground"
                       : "hover:bg-muted",
                   )}
-                  onClick={() => setSelectedModel(m.id)}
+                  onClick={() => {
+                    setSelectedModel(m.id);
+                    setShowCustomInput(false);
+                  }}
                 >
                   {m.icon}
                   <div className="min-w-0 flex-1">
@@ -741,6 +753,51 @@ export const ChatComposer: FC<{ isOpen?: boolean }> = ({ isOpen }) => {
                   )}
                 </button>
               ))}
+              {/* Custom model option */}
+              <button
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-sm transition-colors",
+                  isCustomModel
+                    ? "bg-accent text-accent-foreground"
+                    : "hover:bg-muted",
+                )}
+                onClick={() => {
+                  setShowCustomInput(true);
+                  setTimeout(() => customModelInputRef.current?.focus(), 0);
+                }}
+              >
+                <SettingsIcon className="size-3.5" />
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium text-xs">Custom...</div>
+                  <div className="truncate text-muted-foreground text-xs">
+                    {isCustomModel ? selectedModel : "Use any model name"}
+                  </div>
+                </div>
+                {isCustomModel && <CheckIcon className="size-3 shrink-0" />}
+              </button>
+              {/* Custom model text input */}
+              {showCustomInput && (
+                <div className="px-1 pt-1 pb-0.5">
+                  <input
+                    ref={customModelInputRef}
+                    type="text"
+                    value={customModelInput}
+                    placeholder="e.g. glm-5"
+                    className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 font-mono text-xs outline-none focus:border-ring"
+                    onChange={(e) => setCustomModelInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && customModelInput.trim()) {
+                        setSelectedModel(customModelInput.trim());
+                      }
+                    }}
+                    onBlur={() => {
+                      if (customModelInput.trim()) {
+                        setSelectedModel(customModelInput.trim());
+                      }
+                    }}
+                  />
+                </div>
+              )}
             </div>
 
             <div className="border-border border-t" />
@@ -910,7 +967,9 @@ export const ChatComposer: FC<{ isOpen?: boolean }> = ({ isOpen }) => {
                     ? "Opus"
                     : selectedModel === "haiku"
                       ? "Haiku"
-                      : "OpusPlan"}
+                      : selectedModel === "opusplan"
+                        ? "OpusPlan"
+                        : selectedModel}
               </span>
               <span className="text-muted-foreground/60">
                 {effortLevel === "low"
