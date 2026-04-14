@@ -626,7 +626,7 @@ jobs:
       - name: Determine tag
         id: tag
         run: |
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
             echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
           else
             echo "tag=${{ inputs.release_tag }}" >> $GITHUB_OUTPUT
