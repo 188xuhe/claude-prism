@@ -649,9 +649,10 @@ jobs:
           LIN_SIG: ${{ needs.build-linux.outputs.sig }}
           LIN_URL: ${{ needs.build-linux.outputs.url }}
         run: |
-          VERSION="${TAG#v}"
+          # Strip leading non-digit chars (v, x, vx, etc.) to get a valid semver
+          VERSION="$(echo "$TAG" | sed 's/^[^0-9]*//')"
           PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          export BASE_URL="https://github.com/delibae/claude-prism/releases/download/$TAG"
+          export BASE_URL="https://github.com/188xuhe/claude-prism/releases/download/$TAG"
 
           node -e "
             const BASE = process.env.BASE_URL;
@@ -681,7 +682,7 @@ jobs:
         run: |
           TAG="${{ steps.tag.outputs.tag }}"
           gh release view "$TAG" > /dev/null 2>&1 || \
-            gh release create "$TAG" --title "ClaudePrism $TAG" --generate-notes --draft
+            gh release create "$TAG" --title "ClaudePrism $TAG" --generate-notes
 
       - name: Rename and upload assets
         env:
@@ -714,4 +715,4 @@ jobs:
             gh release upload "$TAG" "$file" --clobber
           done
 
-      # Release stays as draft — publish manually from GitHub Releases UI
+      # Release is published automatically after assets are uploaded

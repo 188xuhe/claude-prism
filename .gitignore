@@ -97,3 +97,4 @@ build/
 reference_pr
 reference_pr_claude
 external-libs/
+.playwright-mcp
