@@ -416,7 +416,33 @@ jobs:
             echo "No TAURI_SIGNING_PRIVATE_KEY — disabling updater artifacts"
             EXTRA_ARGS='--config {"bundle":{"createUpdaterArtifacts":false}}'
           fi
-          pnpm --filter @claude-prism/desktop tauri build --target x86_64-apple-darwin $EXTRA_ARGS
+          pnpm --filter @claude-prism/desktop tauri build --target x86_64-apple-darwin --bundles app $EXTRA_ARGS
+
+      - name: Create DMG manually (with retry)
+        run: |
+          TARGET="x86_64-apple-darwin"
+          APP_PATH="apps/desktop/src-tauri/target/$TARGET/release/bundle/macos/ClaudePrism.app"
+          DMG_DIR="apps/desktop/src-tauri/target/$TARGET/release/bundle/dmg"
+          DMG_PATH="$DMG_DIR/ClaudePrism_1.0.0_x64.dmg"
+          mkdir -p "$DMG_DIR"
+
+          # hdiutil is flaky on macOS Intel CI runners — retry up to 3 times
+          for i in 1 2 3; do
+            echo "==> DMG attempt $i"
+            if hdiutil create -volname "ClaudePrism" \
+              -srcfolder "$APP_PATH" \
+              -ov -format UDZO \
+              "$DMG_PATH"; then
+              echo "==> DMG created successfully"
+              break
+            fi
+            echo "==> hdiutil failed, cleaning up..."
+            rm -f "$DMG_PATH"
+            if [ "$i" -eq 3 ]; then
+              echo "==> All DMG attempts failed, skipping DMG"
+            fi
+            sleep 5
+          done
 
       - name: Notarize DMG
         env:
