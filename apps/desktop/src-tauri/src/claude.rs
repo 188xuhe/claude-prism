@@ -666,11 +666,17 @@ fn resolve_cmd_to_node(program: &str) -> (String, Vec<String>) {
     )
 }
 
-/// Create a std::process::Command that handles .cmd/.bat files on Windows.
+/// Create a std::process::Command that handles .cmd/.bat files on Windows
+/// and ensures PATH includes common tool directories on Unix.
+///
+/// GUI apps on macOS/Linux inherit a minimal PATH from launchd that often
+/// excludes /opt/homebrew/bin, ~/.local/bin, etc. When the claude binary
+/// is a Node.js script with shebang `#!/usr/bin/env node`, running it fails
+/// if `node` is not on PATH. We fix this by prepending the same tool
+/// directories that `create_command()` uses for actual claude invocations.
 fn new_sync_command(program: &str) -> std::process::Command {
     #[cfg(target_os = "windows")]
     {
-
         let (resolved, prefix) = resolve_cmd_to_node(program);
         let mut c = std::process::Command::new(&resolved);
         c.creation_flags(CREATE_NO_WINDOW);
@@ -680,7 +686,59 @@ fn new_sync_command(program: &str) -> std::process::Command {
         return c;
     }
     #[cfg(not(target_os = "windows"))]
-    std::process::Command::new(program)
+    {
+        let mut cmd = std::process::Command::new(program);
+
+        // Build an augmented PATH so that the shebang `#!/usr/bin/env node`
+        // can resolve `node` even when the GUI app's inherited PATH is minimal.
+        let mut current_path = std::env::var("PATH").unwrap_or_default();
+        let sep = ":";
+        if let Some(home) = dirs::home_dir() {
+            // Add the program's parent directory (e.g. /opt/homebrew/bin)
+            if let Some(program_dir) = std::path::Path::new(program).parent() {
+                let dir_str = program_dir.to_string_lossy().to_string();
+                if !current_path.contains(&dir_str) {
+                    current_path = format!("{}{}{}", dir_str, sep, current_path);
+                }
+            }
+            // Add NVM_BIN if set
+            if let Ok(nvm_bin) = std::env::var("NVM_BIN") {
+                let nvm_path = std::path::PathBuf::from(&nvm_bin);
+                if nvm_path.exists() && !current_path.contains(&nvm_bin) {
+                    current_path = format!("{}{}{}", nvm_bin, sep, current_path);
+                }
+            } else {
+                let nvm_dir = home.join(".nvm").join("versions").join("node");
+                if nvm_dir.exists() {
+                    if let Ok(entries) = std::fs::read_dir(&nvm_dir) {
+                        let mut candidates: Vec<std::path::PathBuf> = entries
+                            .filter_map(|e| e.ok())
+                            .map(|e| e.path().join("bin"))
+                            .filter(|p| p.exists())
+                            .collect();
+                        candidates.sort();
+                        candidates.reverse();
+                        if let Some(nvm_bin_path) = candidates.first() {
+                            let nvm_bin_str = nvm_bin_path.to_string_lossy().to_string();
+                            if !current_path.contains(&nvm_bin_str) {
+                                current_path = format!("{}{}{}", nvm_bin_str, sep, current_path);
+                            }
+                        }
+                    }
+                }
+            }
+            // Add common tool directories
+            for dir in unix_extra_tool_dirs(&home, std::env::var_os("PNPM_HOME")) {
+                let dir_str = dir.to_string_lossy().to_string();
+                if dir.exists() && !current_path.contains(&dir_str) {
+                    current_path = format!("{}{}{}", dir_str, sep, current_path);
+                }
+            }
+        }
+        cmd.env("PATH", &current_path);
+
+        cmd
+    }
 }
 
 /// Create a tokio Command with appropriate environment variables.
@@ -1145,9 +1203,24 @@ pub async fn check_claude_status() -> Result<ClaudeStatus, String> {
         Ok(output) if output.status.success() => {
             Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
         }
-        _ => {
-            // Binary found but doesn't work — on Windows this is often because
-            // Git for Windows is missing (Claude Code needs git-bash).
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            eprintln!(
+                "[check_claude_status] --version failed: exit={:?} stdout='{}' stderr='{}'",
+                output.status.code(), stdout, stderr
+            );
+            return Ok(ClaudeStatus {
+                installed: false,
+                authenticated: false,
+                binary_path: None,
+                version: None,
+                account_email: None,
+                missing_git,
+            });
+        }
+        Err(e) => {
+            eprintln!("[check_claude_status] --version spawn error: {}", e);
             return Ok(ClaudeStatus {
                 installed: false,
                 authenticated: false,
