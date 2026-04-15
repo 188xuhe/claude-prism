@@ -800,8 +800,8 @@ export function PdfPreview() {
       ref={previewContainerRef}
       className="@container/pv relative flex h-full flex-col bg-muted/50"
     >
-      <div className="flex h-[calc(40px+var(--titlebar-height))] shrink-0 items-center border-border border-b bg-background px-2 pt-[var(--titlebar-height)]">
-        <div className="flex items-center gap-1">
+      <div className="flex min-h-[calc(40px+var(--titlebar-height))] shrink-0 flex-wrap items-center border-border border-b bg-background px-2 pt-[var(--titlebar-height)]">
+        <div className="flex shrink-0 items-center gap-1">
           <Select
             value={compilerBackend}
             onValueChange={(v) =>
@@ -856,7 +856,7 @@ export function PdfPreview() {
             </Button>
           )}
         </div>
-        <div data-tauri-drag-region className="flex-1 self-stretch" />
+        <div data-tauri-drag-region className="min-w-4 flex-1 self-stretch" />
         <div className="flex shrink-0 items-center gap-1">
           {pdfData && (
             <>
