@@ -16,7 +16,6 @@ import {
   MonitorIcon,
   ListIcon,
   HashIcon,
-  GithubIcon,
   ChevronRightIcon,
   ChevronDownIcon,
   FileCodeIcon,
@@ -814,16 +813,6 @@ export function Sidebar() {
       <div className="flex items-center justify-between border-sidebar-border border-t px-3 py-2 text-muted-foreground text-xs">
         <span className="truncate">ClaudePrism v{appVersion}</span>
         <div className="flex shrink-0 items-center gap-1">
-          <Button variant="ghost" size="icon" className="size-6" asChild>
-            <a
-              href="https://github.com/delibae/claude-prism"
-              target="_blank"
-              rel="noopener noreferrer"
-              title="GitHub"
-            >
-              <GithubIcon className="size-3.5" />
-            </a>
-          </Button>
           <Button
             variant="ghost"
             size="icon"
