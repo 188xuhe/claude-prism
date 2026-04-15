@@ -186,6 +186,46 @@ fn find_claude_binary() -> Result<String, String> {
         return Ok(path.to_string_lossy().to_string());
     }
 
+    // 2c. Check npm global install location.
+    //     `npm install -g @anthropic-ai/claude-code` installs a symlink at
+    //     `<npm-prefix>/bin/claude`. GUI apps on macOS typically lack
+    //     /opt/homebrew/bin in PATH, so `which::which` misses it.
+    //     We resolve the prefix via `npm root -g` and check the parent's bin/.
+    #[cfg(not(target_os = "windows"))]
+    {
+        // Fast path: check well-known npm prefixes directly (no subprocess)
+        if let Some(home) = dirs::home_dir() {
+            let npm_candidates: Vec<PathBuf> = vec![
+                PathBuf::from("/opt/homebrew/bin/claude"),       // Homebrew npm on Apple Silicon
+                PathBuf::from("/usr/local/bin/claude"),          // Homebrew npm on Intel Mac
+                home.join(".npm-global").join("bin").join("claude"),
+            ];
+            for candidate in &npm_candidates {
+                if candidate.exists() {
+                    return Ok(candidate.to_string_lossy().to_string());
+                }
+            }
+        }
+        // Slow path: ask npm for its global prefix
+        if let Ok(output) = std::process::Command::new("npm")
+            .args(["root", "-g"])
+            .output()
+        {
+            if output.status.success() {
+                let root = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !root.is_empty() {
+                    let root_path = PathBuf::from(&root);
+                    if let Some(prefix) = root_path.parent() {
+                        let claude = prefix.join("bin").join("claude");
+                        if claude.exists() {
+                            return Ok(claude.to_string_lossy().to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // 3. Try to find claude on PATH
     if let Ok(path) = which::which("claude") {
         return Ok(path.to_string_lossy().to_string());
