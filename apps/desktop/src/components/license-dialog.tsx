@@ -112,7 +112,9 @@ export function LicenseDialog({ open, onActivated }: LicenseDialogProps) {
 
           {/* License Key Input */}
           <div className="space-y-2">
-            <label htmlFor="license-key-input" className="font-medium text-sm">License Key</label>
+            <label htmlFor="license-key-input" className="font-medium text-sm">
+              License Key
+            </label>
             <input
               id="license-key-input"
               type="text"
