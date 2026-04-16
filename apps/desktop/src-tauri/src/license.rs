@@ -111,7 +111,7 @@ fn get_mac_macos() -> Result<String, String> {
                 let trimmed = line.trim();
                 if trimmed.starts_with("ether ") {
                     let mac = trimmed.strip_prefix("ether ").unwrap_or("").trim();
-                    if !mac.is_empty() && mac.contains(':') {
+                    if is_valid_mac(mac) {
                         return Ok(mac.to_string());
                     }
                 }
@@ -128,7 +128,7 @@ fn get_mac_linux() -> Result<String, String> {
         let path = format!("/sys/class/net/{}/address", iface);
         if let Ok(addr) = std::fs::read_to_string(&path) {
             let mac = addr.trim().to_string();
-            if mac.contains(':') && !mac.starts_with("00:00:00") {
+            if is_valid_mac(&mac) {
                 return Ok(mac);
             }
         }
@@ -144,7 +144,7 @@ fn get_mac_linux() -> Result<String, String> {
             if trimmed.starts_with("link/ether ") {
                 let mac = trimmed.strip_prefix("link/ether ").unwrap_or("");
                 let mac = mac.split_whitespace().next().unwrap_or("");
-                if !mac.is_empty() && mac.contains(':') {
+                if is_valid_mac(mac) {
                     return Ok(mac.to_string());
                 }
             }
@@ -155,24 +155,97 @@ fn get_mac_linux() -> Result<String, String> {
 
 #[cfg(target_os = "windows")]
 fn get_mac_windows() -> Result<String, String> {
-    let output = std::process::Command::new("getmac")
-        .args(["/fo", "csv", "/nh"])
+    // Strategy 1: PowerShell Get-NetAdapter (most reliable, Win8+)
+    if let Ok(mac) = get_mac_powershell() {
+        return Ok(mac);
+    }
+    // Strategy 2: ipconfig /all — parse "Physical Address" lines
+    if let Ok(mac) = get_mac_ipconfig() {
+        return Ok(mac);
+    }
+    // Strategy 3: getmac /fo csv /nh
+    if let Ok(mac) = get_mac_getmac() {
+        return Ok(mac);
+    }
+    Err("Could not determine MAC address".to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn get_mac_powershell() -> Result<String, String> {
+    let output = std::process::Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "(Get-NetAdapter | Where-Object Status -eq 'Up' | Select-Object -First 1).MacAddress",
+        ])
         .output()
-        .map_err(|e| format!("Failed to run getmac: {}", e))?;
+        .map_err(|e| format!("PowerShell failed: {}", e))?;
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // Output format: "MAC Address","Transport Name"
-    // e.g. "A1-B2-C3-D4-E5-F6","\Device\Tcpip_..."
+    let mac = stdout.trim().replace('-', ":");
+    if is_valid_mac(&mac) {
+        Ok(mac)
+    } else {
+        Err("No valid MAC from PowerShell".to_string())
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn get_mac_ipconfig() -> Result<String, String> {
+    let output = std::process::Command::new("ipconfig")
+        .arg("/all")
+        .output()
+        .map_err(|e| format!("ipconfig failed: {}", e))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Look for "Physical Address" or localized equivalent line
     for line in stdout.lines() {
         let line = line.trim();
-        if line.starts_with('"') {
-            let parts: Vec<&str> = line.splitn(2, '"').collect();
-            if parts.len() >= 2 && parts[1].contains('-') {
-                // Windows uses dashes, convert to colons
-                return Ok(parts[1].replace('-', ":"));
+        // Match "Physical Address . . . . . . . . . : A1-B2-C3-D4-E5-F6"
+        if let Some(pos) = line.find(':') {
+            let after = line[pos + 1..].trim();
+            let mac = after.replace('-', ":");
+            if is_valid_mac(&mac) {
+                return Ok(mac);
             }
         }
     }
-    Err("Could not determine MAC address".to_string())
+    Err("No valid MAC from ipconfig".to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn get_mac_getmac() -> Result<String, String> {
+    let output = std::process::Command::new("getmac")
+        .args(["/fo", "csv", "/nh"])
+        .output()
+        .map_err(|e| format!("getmac failed: {}", e))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        let line = line.trim();
+        if !line.starts_with('"') {
+            continue;
+        }
+        if let Some(end) = line[1..].find('"') {
+            let raw_mac = &line[1..1 + end];
+            let mac = raw_mac.replace('-', ":");
+            if is_valid_mac(&mac) {
+                return Ok(mac);
+            }
+        }
+    }
+    Err("No valid MAC from getmac".to_string())
+}
+
+/// Check if a MAC address looks valid (has colons, not all zeros).
+fn is_valid_mac(mac: &str) -> bool {
+    if !mac.contains(':') {
+        return false;
+    }
+    let parts: Vec<&str> = mac.split(':').collect();
+    if parts.len() != 6 {
+        return false;
+    }
+    // Reject all-zero MAC
+    !parts.iter().all(|p| *p == "00")
 }
 
 /// Get the path to the license file.
