@@ -13,13 +13,13 @@ pub struct LicenseStatus {
 #[derive(serde::Serialize, serde::Deserialize)]
 struct LicenseData {
     key: String,
-    mac: String,
+    machine_id: String,
 }
 
-/// Get the primary MAC address of this machine.
+/// Get the unique machine ID of this machine.
 #[tauri::command]
 pub fn get_machine_id() -> Result<String, String> {
-    get_mac_address()
+    get_platform_machine_id()
 }
 
 /// Check if a valid license is stored and matches the current machine.
@@ -31,18 +31,18 @@ pub fn check_license() -> LicenseStatus {
     }
 }
 
-/// Activate a license key. Verifies it against the current MAC address.
+/// Activate a license key. Verifies it against the current machine ID.
 /// If valid, persists the license to disk.
 #[tauri::command]
 pub fn activate_license(key: String) -> Result<(), String> {
-    let mac = get_mac_address()?;
-    let normalized_mac = normalize_mac(&mac);
-    let expected = derive_license_key(&normalized_mac);
+    let machine_id = get_platform_machine_id()?;
+    let normalized_id = normalize_id(&machine_id);
+    let expected = derive_license_key(&normalized_id);
 
     if key.to_uppercase() == expected {
         let license_data = LicenseData {
             key: key.to_uppercase(),
-            mac: normalized_mac,
+            machine_id: normalized_id,
         };
         save_license(&license_data)
     } else {
@@ -50,12 +50,12 @@ pub fn activate_license(key: String) -> Result<(), String> {
     }
 }
 
-/// Derive a license key from a normalized MAC address using HMAC-SHA256.
+/// Derive a license key from a normalized machine ID using HMAC-SHA256.
 /// Takes the first 16 hex characters and formats as XXXX-XXXX-XXXX-XXXX.
-fn derive_license_key(normalized_mac: &str) -> String {
+fn derive_license_key(normalized_id: &str) -> String {
     let mut mac = HmacSha256::new_from_slice(LICENSE_SECRET)
         .expect("HMAC can take key of any size");
-    mac.update(normalized_mac.as_bytes());
+    mac.update(normalized_id.as_bytes());
     let result = mac.finalize();
     let code_bytes = result.into_bytes();
     let hex_str: String = code_bytes.iter().map(|b| format!("{:02x}", b)).collect();
@@ -71,26 +71,27 @@ fn derive_license_key(normalized_mac: &str) -> String {
     )
 }
 
-/// Normalize a MAC address: lowercase, strip colons/dashes.
-fn normalize_mac(mac: &str) -> String {
-    mac.to_lowercase()
-        .replace(':', "")
-        .replace('-', "")
+/// Normalize a machine ID: lowercase, strip non-hex characters.
+fn normalize_id(id: &str) -> String {
+    id.to_lowercase()
+        .chars()
+        .filter(|c| c.is_ascii_hexdigit())
+        .collect()
 }
 
-/// Get the MAC address of the primary network interface.
-fn get_mac_address() -> Result<String, String> {
+/// Get the platform-native machine ID.
+fn get_platform_machine_id() -> Result<String, String> {
     #[cfg(target_os = "macos")]
     {
-        get_mac_macos()
+        get_machine_id_macos()
     }
     #[cfg(target_os = "linux")]
     {
-        get_mac_linux()
+        get_machine_id_linux()
     }
     #[cfg(target_os = "windows")]
     {
-        get_mac_windows()
+        get_machine_id_windows()
     }
     #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
     {
@@ -98,154 +99,63 @@ fn get_mac_address() -> Result<String, String> {
     }
 }
 
+/// macOS: read IOPlatformUUID from ioreg.
 #[cfg(target_os = "macos")]
-fn get_mac_macos() -> Result<String, String> {
-    // Try en0 first (usually the primary interface on macOS)
-    for iface in &["en0", "en1"] {
-        if let Ok(output) = std::process::Command::new("ifconfig")
-            .arg(iface)
-            .output()
-        {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            for line in stdout.lines() {
-                let trimmed = line.trim();
-                if trimmed.starts_with("ether ") {
-                    let mac = trimmed.strip_prefix("ether ").unwrap_or("").trim();
-                    if is_valid_mac(mac) {
-                        return Ok(mac.to_string());
+fn get_machine_id_macos() -> Result<String, String> {
+    let output = std::process::Command::new("ioreg")
+        .args(["-rd1", "-c", "IOPlatformExpertDevice"])
+        .output()
+        .map_err(|e| format!("ioreg failed: {}", e))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        if line.contains("IOPlatformUUID") {
+            // Line format: "IOPlatformUUID" = "XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
+            if let Some(start) = line.find("= \"") {
+                let rest = &line[start + 3..];
+                if let Some(end) = rest.find('"') {
+                    let uuid = &rest[..end];
+                    if !uuid.is_empty() {
+                        return Ok(uuid.to_string());
                     }
                 }
             }
         }
     }
-    Err("Could not determine MAC address".to_string())
+    Err("Could not determine machine ID (IOPlatformUUID)".to_string())
 }
 
+/// Linux: read /etc/machine-id.
 #[cfg(target_os = "linux")]
-fn get_mac_linux() -> Result<String, String> {
-    // Try common interface paths
-    for iface in &["eth0", "wlan0", "enp0s3", "wlp2s0"] {
-        let path = format!("/sys/class/net/{}/address", iface);
-        if let Ok(addr) = std::fs::read_to_string(&path) {
-            let mac = addr.trim().to_string();
-            if is_valid_mac(&mac) {
-                return Ok(mac);
-            }
-        }
+fn get_machine_id_linux() -> Result<String, String> {
+    let id = std::fs::read_to_string("/etc/machine-id")
+        .map_err(|e| format!("Cannot read /etc/machine-id: {}", e))?;
+    let id = id.trim().to_string();
+    if id.is_empty() {
+        return Err("machine-id is empty".to_string());
     }
-    // Fallback: try ip link show
-    if let Ok(output) = std::process::Command::new("ip")
-        .args(["link", "show"])
-        .output()
-    {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        for line in stdout.lines() {
-            let trimmed = line.trim();
-            if trimmed.starts_with("link/ether ") {
-                let mac = trimmed.strip_prefix("link/ether ").unwrap_or("");
-                let mac = mac.split_whitespace().next().unwrap_or("");
-                if is_valid_mac(mac) {
-                    return Ok(mac.to_string());
-                }
-            }
-        }
-    }
-    Err("Could not determine MAC address".to_string())
+    Ok(id)
 }
 
+/// Windows: read MachineGuid from registry.
 #[cfg(target_os = "windows")]
-fn get_mac_windows() -> Result<String, String> {
-    // Strategy 1: PowerShell Get-NetAdapter (most reliable, Win8+)
-    if let Ok(mac) = get_mac_powershell() {
-        return Ok(mac);
-    }
-    // Strategy 2: ipconfig /all — parse "Physical Address" lines
-    if let Ok(mac) = get_mac_ipconfig() {
-        return Ok(mac);
-    }
-    // Strategy 3: getmac /fo csv /nh
-    if let Ok(mac) = get_mac_getmac() {
-        return Ok(mac);
-    }
-    Err("Could not determine MAC address".to_string())
-}
+fn get_machine_id_windows() -> Result<String, String> {
+    use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_READ};
+    use winreg::RegKey;
 
-#[cfg(target_os = "windows")]
-fn get_mac_powershell() -> Result<String, String> {
-    let output = std::process::Command::new("powershell")
-        .args([
-            "-NoProfile",
-            "-NonInteractive",
-            "-Command",
-            "(Get-NetAdapter | Where-Object Status -eq 'Up' | Select-Object -First 1).MacAddress",
-        ])
-        .output()
-        .map_err(|e| format!("PowerShell failed: {}", e))?;
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let mac = stdout.trim().replace('-', ":");
-    if is_valid_mac(&mac) {
-        Ok(mac)
-    } else {
-        Err("No valid MAC from PowerShell".to_string())
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    let key = hklm
+        .open_subkey_with_flags(
+            r"SOFTWARE\Microsoft\Cryptography",
+            KEY_READ,
+        )
+        .map_err(|e| format!("Cannot open registry key: {}", e))?;
+    let guid: String = key
+        .get_value("MachineGuid")
+        .map_err(|e| format!("Cannot read MachineGuid: {}", e))?;
+    if guid.is_empty() {
+        return Err("MachineGuid is empty".to_string());
     }
-}
-
-#[cfg(target_os = "windows")]
-fn get_mac_ipconfig() -> Result<String, String> {
-    let output = std::process::Command::new("ipconfig")
-        .arg("/all")
-        .output()
-        .map_err(|e| format!("ipconfig failed: {}", e))?;
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    // Look for "Physical Address" or localized equivalent line
-    for line in stdout.lines() {
-        let line = line.trim();
-        // Match "Physical Address . . . . . . . . . : A1-B2-C3-D4-E5-F6"
-        if let Some(pos) = line.find(':') {
-            let after = line[pos + 1..].trim();
-            let mac = after.replace('-', ":");
-            if is_valid_mac(&mac) {
-                return Ok(mac);
-            }
-        }
-    }
-    Err("No valid MAC from ipconfig".to_string())
-}
-
-#[cfg(target_os = "windows")]
-fn get_mac_getmac() -> Result<String, String> {
-    let output = std::process::Command::new("getmac")
-        .args(["/fo", "csv", "/nh"])
-        .output()
-        .map_err(|e| format!("getmac failed: {}", e))?;
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    for line in stdout.lines() {
-        let line = line.trim();
-        if !line.starts_with('"') {
-            continue;
-        }
-        if let Some(end) = line[1..].find('"') {
-            let raw_mac = &line[1..1 + end];
-            let mac = raw_mac.replace('-', ":");
-            if is_valid_mac(&mac) {
-                return Ok(mac);
-            }
-        }
-    }
-    Err("No valid MAC from getmac".to_string())
-}
-
-/// Check if a MAC address looks valid (has colons, not all zeros).
-fn is_valid_mac(mac: &str) -> bool {
-    if !mac.contains(':') {
-        return false;
-    }
-    let parts: Vec<&str> = mac.split(':').collect();
-    if parts.len() != 6 {
-        return false;
-    }
-    // Reject all-zero MAC
-    !parts.iter().all(|p| *p == "00")
+    Ok(guid)
 }
 
 /// Get the path to the license file.
@@ -275,15 +185,15 @@ fn read_license() -> Result<LicenseData, String> {
 /// Verify the stored license matches the current machine.
 fn verify_stored_license() -> Result<bool, String> {
     let data = read_license()?;
-    let current_mac = get_mac_address()?;
-    let normalized_current = normalize_mac(&current_mac);
+    let current_id = get_platform_machine_id()?;
+    let normalized_current = normalize_id(&current_id);
 
-    // MAC must match current machine (prevents copying license file)
-    if data.mac != normalized_current {
+    // Machine ID must match current machine (prevents copying license file)
+    if data.machine_id != normalized_current {
         return Ok(false);
     }
 
-    // Key must be valid for this MAC
+    // Key must be valid for this machine ID
     let expected = derive_license_key(&normalized_current);
     Ok(data.key == expected)
 }
@@ -294,8 +204,8 @@ mod tests {
 
     #[test]
     fn test_derive_license_key() {
-        let mac = "a1b2c3d4e5f6";
-        let key = derive_license_key(mac);
+        let id = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4";
+        let key = derive_license_key(id);
         // Should be in XXXX-XXXX-XXXX-XXXX format
         assert_eq!(key.len(), 19); // 16 chars + 3 dashes
         let parts: Vec<&str> = key.split('-').collect();
@@ -307,25 +217,43 @@ mod tests {
 
     #[test]
     fn test_derive_license_key_deterministic() {
-        let mac = "a1b2c3d4e5f6";
-        let key1 = derive_license_key(mac);
-        let key2 = derive_license_key(mac);
+        let id = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4";
+        let key1 = derive_license_key(id);
+        let key2 = derive_license_key(id);
         assert_eq!(key1, key2);
     }
 
     #[test]
-    fn test_normalize_mac() {
-        assert_eq!(normalize_mac("A1:B2:C3:D4:E5:F6"), "a1b2c3d4e5f6");
-        assert_eq!(normalize_mac("a1-b2-c3-d4-e5-f6"), "a1b2c3d4e5f6");
-        assert_eq!(normalize_mac("a1b2c3d4e5f6"), "a1b2c3d4e5f6");
+    fn test_normalize_id() {
+        // UUID format with dashes
+        assert_eq!(
+            normalize_id("A1B2C3D4-E5F6-A1B2-C3D4-E5F6A1B2C3D4"),
+            "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"
+        );
+        // Already normalized
+        assert_eq!(
+            normalize_id("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"),
+            "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"
+        );
+        // Strips non-hex chars
+        assert_eq!(
+            normalize_id("A1:B2:C3:D4:E5:F6"),
+            "a1b2c3d4e5f6"
+        );
     }
 
     #[test]
     fn test_activate_license_validates_key() {
         // A wrong key should be rejected
         let result = activate_license("0000-0000-0000-0000".to_string());
-        // This will fail because the key doesn't match the current MAC
-        // but we can't test the positive case without knowing the real MAC
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cross_platform_consistency() {
+        // Same machine ID should produce same key regardless of input format
+        let key1 = derive_license_key("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4");
+        let key2 = derive_license_key(&normalize_id("A1B2C3D4-E5F6-A1B2-C3D4-E5F6A1B2C3D4"));
+        assert_eq!(key1, key2);
     }
 }
