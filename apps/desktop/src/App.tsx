@@ -17,6 +17,8 @@ import {
 import { useUvSetupStore } from "@/stores/uv-setup-store";
 import { ErrorFallback } from "@/components/error-fallback";
 import { createLogger } from "@/lib/debug/logger";
+import { LicenseDialog } from "@/components/license-dialog";
+import { invoke } from "@tauri-apps/api/core";
 
 const log = createLogger("app");
 
@@ -96,6 +98,8 @@ function WorkspaceWithClaude() {
 export function App({ onReady }: { onReady?: () => void }) {
   const projectRoot = useDocumentStore((s) => s.projectRoot);
   const [showDebug, setShowDebug] = useState(false);
+  const [licenseActivated, setLicenseActivated] = useState(false);
+  const [licenseChecked, setLicenseChecked] = useState(false);
 
   // Register global keyboard shortcuts (Cmd+S, Cmd+N) at the app level
   useKeyboardShortcuts();
@@ -103,6 +107,19 @@ export function App({ onReady }: { onReady?: () => void }) {
   useEffect(() => {
     onReady?.();
   }, [onReady]);
+
+  // Check license on mount
+  useEffect(() => {
+    invoke<{ activated: boolean }>("check_license")
+      .then((result) => {
+        setLicenseActivated(result.activated);
+        setLicenseChecked(true);
+      })
+      .catch(() => {
+        setLicenseActivated(false);
+        setLicenseChecked(true);
+      });
+  }, []);
 
   // Listen for debug panel toggle (Ctrl+Shift+D)
   useEffect(() => {
@@ -120,7 +137,17 @@ export function App({ onReady }: { onReady?: () => void }) {
             data-tauri-drag-region
             className="fixed inset-x-0 top-0 z-[9999] h-[var(--titlebar-height)]"
           />
-          {projectRoot ? <WorkspaceWithClaude /> : <ProjectPicker />}
+          {!licenseChecked ? null : licenseActivated ? (
+            projectRoot ? (
+              <WorkspaceWithClaude />
+            ) : (
+              <ProjectPicker />
+            )
+          ) : null}
+          <LicenseDialog
+            open={licenseChecked && !licenseActivated}
+            onActivated={() => setLicenseActivated(true)}
+          />
           {showDebug && (
             <div className="fixed inset-0 z-[9998] flex items-end justify-center">
               <div

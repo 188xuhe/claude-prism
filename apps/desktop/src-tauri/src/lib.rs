@@ -1,6 +1,7 @@
 mod claude;
 mod history;
 mod latex;
+mod license;
 mod skills;
 mod slash_commands;
 mod uv;
@@ -414,6 +415,9 @@ pub fn run() {
             uv::uv_run_command,
             get_system_info,
             open_debug_window,
+            license::get_machine_id,
+            license::check_license,
+            license::activate_license,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
