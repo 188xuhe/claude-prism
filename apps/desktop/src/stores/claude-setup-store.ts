@@ -51,6 +51,7 @@ interface ClaudeSetupState {
   checkStatus: () => Promise<void>;
   install: () => Promise<void>;
   login: () => Promise<void>;
+  skipAuth: () => void;
   toggleInstallLogs: () => void;
 
   // Internal helpers
@@ -208,6 +209,10 @@ export const useClaudeSetupStore = create<ClaudeSetupState>((set, get) => ({
         error: err?.message || String(err),
       });
     }
+  },
+
+  skipAuth: () => {
+    set({ status: "ready" });
   },
 
   toggleInstallLogs: () => {

@@ -265,6 +265,7 @@ export function ClaudeSetup() {
   const accountEmail = useClaudeSetupStore((s) => s.accountEmail);
   const install = useClaudeSetupStore((s) => s.install);
   const login = useClaudeSetupStore((s) => s.login);
+  const skipAuth = useClaudeSetupStore((s) => s.skipAuth);
   const checkStatus = useClaudeSetupStore((s) => s.checkStatus);
   const installSteps = useClaudeSetupStore((s) => s.installSteps);
   const loginSteps = useClaudeSetupStore((s) => s.loginSteps);
@@ -285,13 +286,25 @@ export function ClaudeSetup() {
   }
 
   if (status === "ready") {
+    const isAuthenticated = !!accountEmail;
     return (
       <div className="flex w-full items-center gap-3 rounded-xl border border-border bg-muted/30 px-5 py-4">
         <CheckCircle2Icon className="size-5 shrink-0 text-green-600" />
         <div className="min-w-0 flex-1">
-          <p className="font-medium text-sm">Claude Code Ready</p>
+          <p className="font-medium text-sm">
+            {isAuthenticated ? "Claude Code Ready" : "Claude Code Installed"}
+          </p>
           <p className="truncate text-muted-foreground text-xs">
             {[version, accountEmail].filter(Boolean).join(" · ")}
+            {!isAuthenticated && (
+              <button
+                type="button"
+                className="ml-1 text-primary hover:underline"
+                onClick={login}
+              >
+                Sign in
+              </button>
+            )}
           </p>
         </div>
       </div>
@@ -499,7 +512,8 @@ export function ClaudeSetup() {
           <div>
             <p className="font-medium text-sm">Sign in to Claude</p>
             <p className="text-muted-foreground text-xs">
-              Authenticate with your Anthropic account to continue.
+              Authenticate with your Anthropic account, or skip to use with an
+              API key.
             </p>
           </div>
         </div>
@@ -511,6 +525,14 @@ export function ClaudeSetup() {
         <Button size="sm" className="w-full gap-2" onClick={login}>
           <LogInIcon className="size-3.5" />
           Sign in with Browser
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="w-full gap-2 text-muted-foreground"
+          onClick={skipAuth}
+        >
+          Skip for now
         </Button>
       </div>
     );
