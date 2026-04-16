@@ -28,6 +28,8 @@ export interface StepInfo {
   status: StepStatus;
 }
 
+type FallbackReason = "no_npm" | "official_failed" | null;
+
 interface ClaudeSetupState {
   status: SetupStatus;
   isInstalling: boolean;
@@ -40,6 +42,7 @@ interface ClaudeSetupState {
   installSteps: StepInfo[];
   installLogs: string[];
   installLogsVisible: boolean;
+  fallbackReason: FallbackReason;
 
   // Login progress
   loginSteps: StepInfo[];
@@ -58,6 +61,7 @@ interface ClaudeSetupState {
   _failCurrentLoginStep: (error: string) => void;
   _finishInstall: (success: boolean) => void;
   _finishLogin: (success: boolean) => void;
+  _setFallbackReason: (reason: FallbackReason) => void;
 }
 
 // ─── Constants ───
@@ -114,6 +118,7 @@ export const useClaudeSetupStore = create<ClaudeSetupState>((set, get) => ({
   installSteps: [],
   installLogs: [],
   installLogsVisible: false,
+  fallbackReason: null,
 
   loginSteps: [],
 
@@ -166,7 +171,8 @@ export const useClaudeSetupStore = create<ClaudeSetupState>((set, get) => ({
       error: null,
       installSteps: initialSteps,
       installLogs: [],
-      installLogsVisible: false,
+      installLogsVisible: true,
+      fallbackReason: null,
     });
 
     try {
@@ -299,5 +305,9 @@ export const useClaudeSetupStore = create<ClaudeSetupState>((set, get) => ({
       );
       set({ isLoggingIn: false, status: "error" });
     }
+  },
+
+  _setFallbackReason: (reason: FallbackReason) => {
+    set({ fallbackReason: reason });
   },
 }));

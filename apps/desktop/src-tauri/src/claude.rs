@@ -1371,41 +1371,91 @@ async fn ensure_local_dirs(window: &WebviewWindow) -> Result<(), String> {
     verify_dirs_writable(&required_dirs)
 }
 
-#[tauri::command]
-pub async fn install_claude_cli(window: WebviewWindow) -> Result<(), String> {
-    // Ensure directories that the Claude Code installer expects exist.
-    // The installer fails with EACCES if ~/.local is owned by root
-    // (e.g. created by pip or another tool).
+/// Build the official install command for the current platform.
+/// Unix: curl the install script from claude.ai and pipe to bash.
+/// Windows: download install.ps1 to a temp file and execute it
+/// (avoids `irm | iex` which swallows Write-Host output).
+fn official_install_cmd() -> Vec<String> {
     #[cfg(not(target_os = "windows"))]
-    {
-        ensure_local_dirs(&window).await?;
+    return vec![
+        "bash".into(),
+        "-c".into(),
+        "curl -fsSL https://claude.ai/install.sh | bash".into(),
+    ];
+    #[cfg(target_os = "windows")]
+    return {
+        let tmp = std::env::temp_dir().join("claude-install.ps1");
+        let script = format!(
+            "$out = '{}'; irm https://claude.ai/install.ps1 -OutFile $out; & $out; Remove-Item $out -ErrorAction SilentlyContinue",
+            tmp.to_string_lossy()
+        );
+        vec![
+            "powershell".into(),
+            "-NoProfile".into(),
+            "-ExecutionPolicy".into(),
+            "Bypass".into(),
+            "-Command".into(),
+            script,
+        ]
+    };
+}
+
+/// Build the npmmirror fallback install command.
+/// Uses `npm install -g` with the China-friendly registry.
+fn mirror_install_cmd() -> Vec<String> {
+    #[cfg(not(target_os = "windows"))]
+    return vec![
+        "bash".into(),
+        "-c".into(),
+        "npm install -g @anthropic-ai/claude-code --registry=https://registry.npmmirror.com".into(),
+    ];
+    #[cfg(target_os = "windows")]
+    return vec![
+        "npm.cmd".into(),
+        "install".into(),
+        "-g".into(),
+        "@anthropic-ai/claude-code".into(),
+        "--registry=https://registry.npmmirror.com".into(),
+    ];
+}
+
+/// Check whether npm is available on the system.
+fn has_npm() -> bool {
+    #[cfg(not(target_os = "windows"))]
+    return which::which("npm").is_ok();
+    #[cfg(target_os = "windows")]
+    return which::which("npm").is_ok() || which::which("npm.cmd").is_ok();
+}
+
+/// Execute an install command, streaming stdout/stderr to the frontend via Tauri events.
+/// Returns `true` if the process exited successfully.
+async fn run_install(window: &WebviewWindow, cmd_parts: Vec<String>) -> bool {
+    if cmd_parts.is_empty() {
+        return false;
     }
 
-    #[cfg(not(target_os = "windows"))]
-    let mut cmd = {
-        let mut c = tokio::process::Command::new("bash");
-        c.args(["-c", "curl -fsSL https://claude.ai/install.sh | bash"]);
-        c
-    };
+    let program = &cmd_parts[0];
+    let args = &cmd_parts[1..];
+
     #[cfg(target_os = "windows")]
     let mut cmd = {
-
-        let mut c = tokio::process::Command::new("powershell");
+        let mut c = tokio::process::Command::new(program);
         c.creation_flags(CREATE_NO_WINDOW);
-        c.args([
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-Command",
-            "irm https://claude.ai/install.ps1 | iex",
-        ]);
+        c.args(args);
         c
     };
+    #[cfg(not(target_os = "windows"))]
+    let mut cmd = {
+        let mut c = tokio::process::Command::new(program);
+        c.args(args);
+        c
+    };
+
     cmd.stdout(std::process::Stdio::piped());
     cmd.stderr(std::process::Stdio::piped());
     cmd.stdin(std::process::Stdio::null());
 
-    // On Linux AppImage, restore original environment so curl/bash work correctly
+    // On Linux AppImage, restore original environment so curl/bash/npm work correctly
     #[cfg(target_os = "linux")]
     sanitize_appimage_env(&mut cmd);
 
@@ -1416,7 +1466,6 @@ pub async fn install_claude_cli(window: WebviewWindow) -> Result<(), String> {
     let path_sep = ":";
     for (key, value) in std::env::vars() {
         if key.eq_ignore_ascii_case("PATH") {
-            // Prepend ~/.local/bin so the installer sees it in PATH
             if let Some(home) = dirs::home_dir() {
                 let local_bin = home.join(".local").join("bin");
                 let local_bin_str = local_bin.to_string_lossy();
@@ -1433,50 +1482,91 @@ pub async fn install_claude_cli(window: WebviewWindow) -> Result<(), String> {
         }
     }
 
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| format!("Failed to run installer: {}", e))?;
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => {
+            let _ = window.emit("install-error", format!("Failed to run installer: {}", e));
+            return false;
+        }
+    };
 
-    let stdout = child.stdout.take().ok_or("Failed to capture stdout")?;
-    let stderr = child.stderr.take().ok_or("Failed to capture stderr")?;
-
-    let stdout_reader = BufReader::new(stdout);
-    let stderr_reader = BufReader::new(stderr);
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
 
     // Stream stdout
     let win_stdout = window.clone();
     let stdout_task = tokio::spawn(async move {
-        let mut lines = stdout_reader.lines();
-        while let Ok(Some(line)) = lines.next_line().await {
-            let clean = strip_ansi(&line);
-            let _ = win_stdout.emit("install-output", clean.as_ref());
+        if let Some(stdout) = stdout {
+            let mut lines = BufReader::new(stdout).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let clean = strip_ansi(&line);
+                let _ = win_stdout.emit("install-output", clean.as_ref());
+            }
         }
     });
 
     // Stream stderr
     let win_stderr = window.clone();
     let stderr_task = tokio::spawn(async move {
-        let mut lines = stderr_reader.lines();
-        while let Ok(Some(line)) = lines.next_line().await {
-            let clean = strip_ansi(&line);
-            let _ = win_stderr.emit("install-error", clean.as_ref());
+        if let Some(stderr) = stderr {
+            let mut lines = BufReader::new(stderr).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let clean = strip_ansi(&line);
+                let _ = win_stderr.emit("install-error", clean.as_ref());
+            }
         }
     });
 
-    // Wait for completion and emit result
-    let win_complete = window;
-    tokio::spawn(async move {
-        let _ = stdout_task.await;
-        let _ = stderr_task.await;
+    // Wait for completion
+    let _ = stdout_task.await;
+    let _ = stderr_task.await;
 
-        let success = match child.wait().await {
-            Ok(status) => status.success(),
-            Err(_) => false,
-        };
+    match child.wait().await {
+        Ok(status) => status.success(),
+        Err(_) => false,
+    }
+}
 
-        let _ = win_complete.emit("install-complete", success);
-    });
+#[tauri::command]
+pub async fn install_claude_cli(window: WebviewWindow) -> Result<(), String> {
+    // Ensure directories that the Claude Code installer expects exist.
+    // The installer fails with EACCES if ~/.local is owned by root
+    // (e.g. created by pip or another tool).
+    #[cfg(not(target_os = "windows"))]
+    {
+        ensure_local_dirs(&window).await?;
+    }
 
+    // 1. Try official install (claude.ai)
+    let official_success = run_install(&window, official_install_cmd()).await;
+    if official_success {
+        let _ = window.emit("install-complete", true);
+        return Ok(());
+    }
+
+    // 2. Official install failed — try npmmirror fallback
+    let _ = window.emit(
+        "install-output",
+        "\n\u{26a0}\u{fe0f} Official install source unreachable. Trying npmmirror fallback...",
+    );
+
+    if !has_npm() {
+        let _ = window.emit(
+            "install-output",
+            "\n\u{274c} npm not found. Please install Node.js first, then run:",
+        );
+        let _ = window.emit(
+            "install-output",
+            "   npm install -g @anthropic-ai/claude-code --registry=https://registry.npmmirror.com",
+        );
+        let _ = window.emit("install-fallback", "no_npm");
+        let _ = window.emit("install-complete", false);
+        return Ok(());
+    }
+
+    // 3. Use npmmirror
+    let mirror_success = run_install(&window, mirror_install_cmd()).await;
+    let _ = window.emit("install-complete", mirror_success);
     Ok(())
 }
 

@@ -13,6 +13,7 @@ import {
   ChevronRightIcon,
   GitBranchIcon,
   ExternalLinkIcon,
+  CopyIcon,
 } from "lucide-react";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
 import { Button } from "@/components/ui/button";
@@ -80,14 +81,30 @@ function useInstallEvents() {
         },
       );
 
+      const unlistenFallback = await listen<string>(
+        "install-fallback",
+        (event) => {
+          if (cancelled) return;
+          useClaudeSetupStore
+            .getState()
+            ._setFallbackReason(event.payload as "no_npm" | "official_failed");
+        },
+      );
+
       if (cancelled) {
         unlistenOutput();
         unlistenError();
         unlistenComplete();
+        unlistenFallback();
         return;
       }
 
-      unlisteners.push(unlistenOutput, unlistenError, unlistenComplete);
+      unlisteners.push(
+        unlistenOutput,
+        unlistenError,
+        unlistenComplete,
+        unlistenFallback,
+      );
     })();
 
     return () => {
@@ -251,6 +268,7 @@ export function ClaudeSetup() {
   const checkStatus = useClaudeSetupStore((s) => s.checkStatus);
   const installSteps = useClaudeSetupStore((s) => s.installSteps);
   const loginSteps = useClaudeSetupStore((s) => s.loginSteps);
+  const fallbackReason = useClaudeSetupStore((s) => s.fallbackReason);
 
   useInstallEvents();
   useLoginEvents();
@@ -324,6 +342,8 @@ export function ClaudeSetup() {
 
   if (status === "error") {
     const hasInstallSteps = installSteps.length > 0;
+    const manualCmd =
+      "npm install -g @anthropic-ai/claude-code --registry=https://registry.npmmirror.com";
 
     return (
       <div className="flex w-full flex-col gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-5 py-4">
@@ -349,6 +369,39 @@ export function ClaudeSetup() {
         )}
 
         {hasInstallSteps && <InstallLogOutput />}
+
+        {fallbackReason === "no_npm" && (
+          <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-3">
+            <p className="text-xs leading-relaxed">
+              <span className="font-medium">npm not found.</span> Install
+              Node.js first, then run the command below in your terminal:
+            </p>
+            <div className="flex items-center gap-2 rounded-md border border-border bg-foreground/3 px-3 py-2">
+              <code className="min-w-0 flex-1 break-all font-mono text-[11px]">
+                {manualCmd}
+              </code>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 shrink-0 px-1.5"
+                onClick={() => navigator.clipboard.writeText(manualCmd)}
+              >
+                <CopyIcon className="size-3" />
+              </Button>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1.5 text-muted-foreground"
+              onClick={() => {
+                shellOpen("https://nodejs.org/");
+              }}
+            >
+              <ExternalLinkIcon className="size-3" />
+              Download Node.js
+            </Button>
+          </div>
+        )}
 
         <div className="flex items-center gap-2">
           <Button
