@@ -1386,7 +1386,7 @@ fn official_install_cmd() -> Vec<String> {
     return {
         let tmp = std::env::temp_dir().join("claude-install.ps1");
         let script = format!(
-            "$out = '{}'; irm https://claude.ai/install.ps1 -OutFile $out; & $out; Remove-Item $out -ErrorAction SilentlyContinue",
+            "$ErrorActionPreference = 'Stop'; $out = '{}'; try {{ irm https://claude.ai/install.ps1 -OutFile $out; & $out }} catch {{ Write-Error $_.Exception.Message; exit 1 }} finally {{ Remove-Item $out -ErrorAction SilentlyContinue }}",
             tmp.to_string_lossy()
         );
         vec![
@@ -1537,11 +1537,34 @@ pub async fn install_claude_cli(window: WebviewWindow) -> Result<(), String> {
         ensure_local_dirs(&window).await?;
     }
 
+    // On Windows, ensure ~/.local/bin exists before running the installer.
+    // The official install.ps1 may not create this directory itself.
+    #[cfg(target_os = "windows")]
+    if let Some(home) = dirs::home_dir() {
+        let local_bin = home.join(".local").join("bin");
+        if !local_bin.exists() {
+            if let Err(e) = std::fs::create_dir_all(&local_bin) {
+                let _ = window.emit(
+                    "install-output",
+                    format!("Warning: could not create {}: {}", local_bin.display(), e),
+                );
+            }
+        }
+    }
+
     // 1. Try official install (claude.ai)
     let official_success = run_install(&window, official_install_cmd()).await;
-    if official_success {
+    if official_success && find_claude_binary().is_ok() {
         let _ = window.emit("install-complete", true);
         return Ok(());
+    }
+
+    // If official install reported success but binary is missing, emit a warning
+    if official_success {
+        let _ = window.emit(
+            "install-output",
+            "\n\u{26a0}\u{fe0f} Installer exited successfully but claude binary not found. Trying fallback...",
+        );
     }
 
     // 2. Official install failed — try npmmirror fallback
@@ -1566,7 +1589,14 @@ pub async fn install_claude_cli(window: WebviewWindow) -> Result<(), String> {
 
     // 3. Use npmmirror
     let mirror_success = run_install(&window, mirror_install_cmd()).await;
-    let _ = window.emit("install-complete", mirror_success);
+    let actually_installed = mirror_success && find_claude_binary().is_ok();
+    if !actually_installed && mirror_success {
+        let _ = window.emit(
+            "install-output",
+            "\n\u{274c} npm install reported success but claude binary not found in expected locations.",
+        );
+    }
+    let _ = window.emit("install-complete", actually_installed);
     Ok(())
 }
 
