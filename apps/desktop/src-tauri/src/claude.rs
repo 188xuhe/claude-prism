@@ -352,7 +352,24 @@ fn find_claude_binary_candidate() -> Result<String, String> {
         #[cfg(target_os = "windows")]
         {
             // Check common Windows Node.js locations
+            // Look for claude.exe (real binary) not claude.cmd (shim script)
             if let Ok(appdata) = std::env::var("APPDATA") {
+                let npm_module_path = PathBuf::from(&appdata)
+                    .join("npm")
+                    .join("node_modules")
+                    .join("@anthropic-ai")
+                    .join("claude-code");
+                // Check for exe in bin/ directory (optionalDependencies place it here)
+                let exe_in_bin = npm_module_path.join("bin").join("claude.exe");
+                if exe_in_bin.exists() {
+                    return Ok(exe_in_bin.to_string_lossy().to_string());
+                }
+                // Check for exe at package root (some versions place it here)
+                let exe_at_root = npm_module_path.join("claude.exe");
+                if exe_at_root.exists() {
+                    return Ok(exe_at_root.to_string_lossy().to_string());
+                }
+                // Fallback to .cmd if no exe found
                 let npm_global = PathBuf::from(&appdata).join("npm").join("claude.cmd");
                 if npm_global.exists() {
                     return Ok(npm_global.to_string_lossy().to_string());
@@ -406,27 +423,29 @@ fn find_claude_binary_candidate() -> Result<String, String> {
         let user_paths = unix_claude_candidate_paths(&home, std::env::var_os("PNPM_HOME"));
         #[cfg(target_os = "windows")]
         let user_paths = vec![
-            home.join(".claude").join("local").join("claude.exe"),
+            // Native installer default location
+            home.join(".local").join("bin").join("claude.exe"),
+            // AppData/Local Programs
             home.join("AppData")
                 .join("Local")
                 .join("Programs")
                 .join("claude")
                 .join("claude.exe"),
-            // Volta
+            // Volta - look for exe
             home.join("AppData")
                 .join("Local")
                 .join("Volta")
                 .join("bin")
-                .join("claude.cmd"),
-            // pnpm global
+                .join("claude.exe"),
+            // pnpm global - look for exe
             home.join("AppData")
                 .join("Local")
                 .join("pnpm")
-                .join("claude.cmd"),
+                .join("claude.exe"),
             // Scoop
-            home.join("scoop").join("shims").join("claude.cmd"),
+            home.join("scoop").join("shims").join("claude.exe"),
             // Standard Node.js install
-            PathBuf::from(r"C:\Program Files\nodejs\claude.cmd"),
+            PathBuf::from(r"C:\Program Files\nodejs\claude.exe"),
         ];
 
         for path in &user_paths {
