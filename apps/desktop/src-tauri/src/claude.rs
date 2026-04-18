@@ -146,11 +146,67 @@ fn expand_env_vars(s: &str) -> String {
     OsString::from_wide(&buf).to_string_lossy().to_string()
 }
 
+/// Check if a file is a valid binary (not a text placeholder script).
+/// The npm package @anthropic-ai/claude-code includes a placeholder shell script
+/// at bin/claude.exe when the platform-specific binary wasn't downloaded.
+/// This placeholder causes "16-bit program not supported" errors on Windows.
+fn is_valid_binary(path: &Path) -> bool {
+    match std::fs::read(path) {
+        Ok(bytes) => {
+            // Check for PE executable magic (Windows .exe)
+            // MZ header: 0x4D 0x5A
+            if bytes.len() >= 2 && bytes[0] == 0x4D && bytes[1] == 0x5A {
+                return true;
+            }
+            // Check for ELF (Linux)
+            if bytes.len() >= 4 && bytes[0] == 0x7F && bytes[1] == 0x45
+                && bytes[2] == 0x4C && bytes[3] == 0x46
+            {
+                return true;
+            }
+            // Check for Mach-O (macOS)
+            if bytes.len() >= 4 {
+                let magic = u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+                // MH_MAGIC, MH_CIGAM, MH_MAGIC_64, MH_CIGAM_64, FAT_MAGIC, FAT_CIGAM
+                if matches!(magic, 0xFEEDFACE | 0xCEFAEDFE | 0xFEEDFACF | 0xCFFAEDFE | 0xCAFEBABE | 0xBEBAFECA) {
+                    return true;
+                }
+            }
+            // Not a recognized binary format
+            false
+        }
+        Err(_) => false,
+    }
+}
+
 /// Discover the claude binary on the system.
 /// Search order: ~/.local/bin → NVM_BIN → which → registry PATH (Windows) →
 /// login shell (Unix) → npm/nvm global → standard paths → user-specific paths.
 /// Returns Err if not found.
 fn find_claude_binary() -> Result<String, String> {
+    // Find any candidate first, then validate it's a real binary
+    let candidate = find_claude_binary_candidate()?;
+
+    // Validate it's a real binary, not a placeholder script
+    if is_valid_binary(Path::new(&candidate)) {
+        Ok(candidate)
+    } else {
+        Err(format!(
+            "Found claude at {} but it's a placeholder script, not a real binary. \
+             The npm postinstall may have failed. Try running: \
+             node {}install.cjs",
+            candidate,
+            if cfg!(target_os = "windows") {
+                r"%APPDATA%\npm\node_modules\@anthropic-ai\claude-code\"
+            } else {
+                "/usr/local/lib/node_modules/@anthropic-ai/claude-code/"
+            }
+        ))
+    }
+}
+
+/// Find a candidate claude binary path (may be a placeholder script).
+fn find_claude_binary_candidate() -> Result<String, String> {
     // 1. Check the native installer's default location first
     //    (GUI apps often don't have ~/.local/bin in PATH)
     if let Some(home) = dirs::home_dir() {
