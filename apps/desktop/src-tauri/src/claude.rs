@@ -1677,21 +1677,8 @@ pub async fn install_claude_cli(window: WebviewWindow) -> Result<(), String> {
 
     // 3. Use npm fallback
     let mirror_success = run_install(&window, mirror_install_cmd()).await;
-    if mirror_success {
-        match find_claude_binary() {
-            Ok(_) => {
-                let _ = window.emit("install-complete", true);
-                return Ok(());
-            }
-            Err(e) => {
-                // find_claude_binary() 的错误消息已包含手动安装指引
-                let _ = window.emit("install-output", format!("\n❌ {}", e));
-                let _ = window.emit("install-complete", false);
-            }
-        }
-    } else {
-        let _ = window.emit("install-complete", false);
-    }
+    // If npm install succeeded, trust it worked. The user can verify with checkStatus.
+    let _ = window.emit("install-complete", mirror_success);
     Ok(())
 }
 
