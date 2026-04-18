@@ -815,4 +815,9 @@ jobs:
             gh release upload "$TAG" "$file" --repo "188xuhe/claude-prism-releases" --clobber
           done
 
+          # Delete source code archives (zip/tar.gz) - they are auto-generated but not needed
+          echo "==> Removing source code archives..."
+          gh release view "$TAG" --repo "188xuhe/claude-prism-releases" --json assets -q '.assets[] | select(.name | test("Source code")) | .id' | \
+            xargs -I {} gh api -X DELETE repos/188xuhe/claude-prism-releases/releases/assets/{}
+
           echo "==> Release published to https://github.com/188xuhe/claude-prism-releases/releases/tag/$TAG"
