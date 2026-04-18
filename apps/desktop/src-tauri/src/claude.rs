@@ -1682,14 +1682,21 @@ pub async fn install_claude_cli(window: WebviewWindow) -> Result<(), String> {
 
     // 3. Use npmmirror
     let mirror_success = run_install(&window, mirror_install_cmd()).await;
-    let actually_installed = mirror_success && find_claude_binary().is_ok();
-    if !actually_installed && mirror_success {
-        let _ = window.emit(
-            "install-output",
-            "\n\u{274c} npm install reported success but claude binary not found in expected locations.",
-        );
+    if mirror_success {
+        match find_claude_binary() {
+            Ok(_) => {
+                let _ = window.emit("install-complete", true);
+                return Ok(());
+            }
+            Err(e) => {
+                // find_claude_binary() 的错误消息已包含手动安装指引
+                let _ = window.emit("install-output", format!("\n❌ {}", e));
+                let _ = window.emit("install-complete", false);
+            }
+        }
+    } else {
+        let _ = window.emit("install-complete", false);
     }
-    let _ = window.emit("install-complete", actually_installed);
     Ok(())
 }
 
