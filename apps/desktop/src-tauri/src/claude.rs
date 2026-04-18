@@ -1488,14 +1488,14 @@ fn official_install_cmd() -> Vec<String> {
     };
 }
 
-/// Build the npmmirror fallback install command.
-/// Uses `npm install -g` with the China-friendly registry.
+/// Build the npm fallback install command.
+/// Uses `npm install -g` with the official npm registry.
 fn mirror_install_cmd() -> Vec<String> {
     #[cfg(not(target_os = "windows"))]
     return vec![
         "bash".into(),
         "-c".into(),
-        "npm install -g @anthropic-ai/claude-code --registry=https://registry.npmmirror.com".into(),
+        "npm install -g @anthropic-ai/claude-code".into(),
     ];
     #[cfg(target_os = "windows")]
     // On Windows, npm is a .cmd batch file. We must invoke it via cmd.exe /C
@@ -1508,7 +1508,6 @@ fn mirror_install_cmd() -> Vec<String> {
         "install".into(),
         "-g".into(),
         "@anthropic-ai/claude-code".into(),
-        "--registry=https://registry.npmmirror.com".into(),
     ];
 }
 
@@ -1660,10 +1659,10 @@ pub async fn install_claude_cli(window: WebviewWindow) -> Result<(), String> {
         );
     }
 
-    // 2. Official install failed — try npmmirror fallback
+    // 2. Official install failed — try npm fallback
     let _ = window.emit(
         "install-output",
-        "\n\u{26a0}\u{fe0f} Official install source unreachable. Trying npmmirror fallback...",
+        "\n\u{26a0}\u{fe0f} Official install source unreachable. Trying npm fallback...",
     );
 
     if !has_npm() {
@@ -1673,14 +1672,14 @@ pub async fn install_claude_cli(window: WebviewWindow) -> Result<(), String> {
         );
         let _ = window.emit(
             "install-output",
-            "   npm install -g @anthropic-ai/claude-code --registry=https://registry.npmmirror.com",
+            "   npm install -g @anthropic-ai/claude-code",
         );
         let _ = window.emit("install-fallback", "no_npm");
         let _ = window.emit("install-complete", false);
         return Ok(());
     }
 
-    // 3. Use npmmirror
+    // 3. Use npm fallback
     let mirror_success = run_install(&window, mirror_install_cmd()).await;
     if mirror_success {
         match find_claude_binary() {
