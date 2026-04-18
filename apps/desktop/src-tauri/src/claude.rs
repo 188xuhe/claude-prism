@@ -1410,8 +1410,13 @@ fn mirror_install_cmd() -> Vec<String> {
         "npm install -g @anthropic-ai/claude-code --registry=https://registry.npmmirror.com".into(),
     ];
     #[cfg(target_os = "windows")]
+    // On Windows, npm is a .cmd batch file. We must invoke it via cmd.exe /C
+    // to avoid "64-bit OS doesn't support 16-bit program" errors when
+    // executing .cmd files directly.
     return vec![
-        "npm.cmd".into(),
+        "cmd.exe".into(),
+        "/C".into(),
+        "npm".into(),
         "install".into(),
         "-g".into(),
         "@anthropic-ai/claude-code".into(),
