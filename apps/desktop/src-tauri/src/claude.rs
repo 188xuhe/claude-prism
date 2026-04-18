@@ -193,25 +193,7 @@ fn is_valid_binary(path: &Path) -> bool {
 /// login shell (Unix) → npm/nvm global → standard paths → user-specific paths.
 /// Returns Err if not found.
 fn find_claude_binary() -> Result<String, String> {
-    // Find any candidate first, then validate it's a real binary
-    let candidate = find_claude_binary_candidate()?;
-
-    // Validate it's a real binary, not a placeholder script
-    if is_valid_binary(Path::new(&candidate)) {
-        Ok(candidate)
-    } else {
-        Err(format!(
-            "Found claude at {} but it's a placeholder script, not a real binary. \
-             The npm postinstall may have failed. Try running: \
-             node {}install.cjs",
-            candidate,
-            if cfg!(target_os = "windows") {
-                r"%APPDATA%\npm\node_modules\@anthropic-ai\claude-code\"
-            } else {
-                "/usr/local/lib/node_modules/@anthropic-ai/claude-code/"
-            }
-        ))
-    }
+    find_claude_binary_candidate()
 }
 
 /// Find a candidate claude binary path (may be a placeholder script).
