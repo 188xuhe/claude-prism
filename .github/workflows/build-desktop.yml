@@ -682,7 +682,7 @@ jobs:
         run: |
           TAG="${{ steps.tag.outputs.tag }}"
           gh release view "$TAG" > /dev/null 2>&1 || \
-            gh release create "$TAG" --title "ClaudePrism $TAG" --generate-notes
+            gh release create "$TAG" --title "ClaudePrism $TAG" --generate-notes --source=false
 
       - name: Rename and upload assets
         env:
