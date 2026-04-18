@@ -94,7 +94,7 @@ fn find_claude_in_registry_path() -> Option<String> {
         }
     }
 
-    let candidates = ["claude.exe", "claude.cmd"];
+    let candidates = ["claude.exe"];
     for dir in &dirs {
         for name in &candidates {
             let p = PathBuf::from(dir).join(name);
@@ -369,17 +369,12 @@ fn find_claude_binary_candidate() -> Result<String, String> {
                 if exe_at_root.exists() {
                     return Ok(exe_at_root.to_string_lossy().to_string());
                 }
-                // Fallback to .cmd if no exe found
-                let npm_global = PathBuf::from(&appdata).join("npm").join("claude.cmd");
-                if npm_global.exists() {
-                    return Ok(npm_global.to_string_lossy().to_string());
-                }
             }
             // NVM for Windows
             if let Ok(nvm_home) = std::env::var("NVM_HOME") {
                 // nvm symlink lives under NVM_SYMLINK (default: C:\Program Files\nodejs)
                 if let Ok(nvm_symlink) = std::env::var("NVM_SYMLINK") {
-                    let p = PathBuf::from(&nvm_symlink).join("claude.cmd");
+                    let p = PathBuf::from(&nvm_symlink).join("claude.exe");
                     if p.exists() {
                         return Ok(p.to_string_lossy().to_string());
                     }
@@ -388,7 +383,7 @@ fn find_claude_binary_candidate() -> Result<String, String> {
                 if let Ok(entries) = std::fs::read_dir(&nvm_home) {
                     let mut candidates: Vec<PathBuf> = entries
                         .filter_map(|e| e.ok())
-                        .map(|e| e.path().join("claude.cmd"))
+                        .map(|e| e.path().join("claude.exe"))
                         .filter(|p| p.exists())
                         .collect();
                     candidates.sort();
