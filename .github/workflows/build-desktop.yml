@@ -796,18 +796,23 @@ jobs:
           echo "==> Prepared assets:"
           ls -la upload/
 
-      - name: Create release on releases repository
+      - name: Create or update release on releases repository
         env:
           GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
         run: |
           TAG="${{ steps.tag.outputs.tag }}"
 
-          # Create release on the public releases repository
-          gh release create "$TAG" \
-            --repo "188xuhe/claude-prism-releases" \
-            --title "ClaudePrism $TAG" \
-            --generate-notes \
-            --latest
+          # Check if release exists, create if not
+          if ! gh release view "$TAG" --repo "188xuhe/claude-prism-releases" > /dev/null 2>&1; then
+            echo "==> Creating new release $TAG"
+            gh release create "$TAG" \
+              --repo "188xuhe/claude-prism-releases" \
+              --title "ClaudePrism $TAG" \
+              --generate-notes \
+              --latest
+          else
+            echo "==> Release $TAG already exists, updating assets"
+          fi
 
           # Upload all assets
           for file in upload/*; do
